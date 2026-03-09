@@ -1,0 +1,30 @@
+---
+description: TypeScript and React code style conventions
+alwaysApply: true
+---
+
+# Code Style
+
+- TypeScript strict mode; explicit return types on all functions
+- `async/await` over `.then()`; descriptive variable names
+- Each function and React component in its own file when possible
+- Object params (not positional args); params listed alphabetically
+- JSDoc block above every function/component — no `@param`/`@returns`, TypeScript is the source of truth
+- JSDoc comment above each param inline in the type
+
+```typescript
+/**
+ * Does X for reason Y
+ */
+const myFunc = ({
+  bar,
+  foo,
+}: {
+  /** What bar represents */
+  bar: number;
+  /** What foo represents */
+  foo?: string;
+}): void => {};
+```
+
+- If the project has a test setup, write tests for new code

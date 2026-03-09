@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Run typecheck across all workspaces
+npm run typecheck
+
+# Run lint-staged (Biome) on staged files
+npx --no-install lint-staged
+
+
