@@ -1,0 +1,71 @@
+name: 'AgentMeter'
+description: 'Track token usage and cost for AI agent runs in GitHub Actions'
+author: 'Foo.software'
+branding:
+  icon: 'zap'
+  color: 'green'
+
+inputs:
+  api_key:
+    description: 'Your AgentMeter API key (from agentmeter.app/dashboard/settings/general)'
+    required: true
+  model:
+    description: 'The AI model used (e.g. claude-sonnet-4-5, claude-opus-4-6)'
+    required: false
+    default: ''
+  engine:
+    description: 'The AI engine used (claude, copilot, codex). Defaults to claude.'
+    required: false
+    default: 'claude'
+  agent_output:
+    description: 'Stdout from the agent step (for JSON token extraction). Pass using ${{ steps.agent.outputs.response }} or similar.'
+    required: false
+    default: ''
+  input_tokens:
+    description: 'Input token count (if known; overrides extraction from agent_output)'
+    required: false
+    default: ''
+  output_tokens:
+    description: 'Output token count (if known; overrides extraction from agent_output)'
+    required: false
+    default: ''
+  cache_read_tokens:
+    description: 'Cache read token count'
+    required: false
+    default: ''
+  cache_write_tokens:
+    description: 'Cache write token count'
+    required: false
+    default: ''
+  turns:
+    description: 'Number of agent turns/iterations (if known)'
+    required: false
+    default: ''
+  status:
+    description: 'Run status: success, failed, timed_out, cancelled, needs_human. Defaults to success.'
+    required: false
+    default: 'success'
+  pr_number:
+    description: 'PR number created by this run (if any)'
+    required: false
+    default: ''
+  api_url:
+    description: 'AgentMeter API base URL (override for self-hosted or testing)'
+    required: false
+    default: 'https://agentmeter.app'
+  post_comment:
+    description: 'Whether to post a cost comment on the PR/issue. Set to false to disable.'
+    required: false
+    default: 'true'
+
+outputs:
+  run_id:
+    description: 'The AgentMeter run ID (UUID)'
+  total_cost_usd:
+    description: 'Total cost in USD as a decimal string (e.g. "4.52")'
+  dashboard_url:
+    description: 'Link to the run detail page in AgentMeter dashboard'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
