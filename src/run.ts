@@ -20,7 +20,7 @@ function buildTriggerRef(number: number, eventName: string): string {
  * Core run logic — orchestrates all steps of the AgentMeter Action.
  */
 export async function run(): Promise<void> {
-  const startedAt = new Date().toISOString();
+  const selfStartedAt = new Date().toISOString();
 
   const inputs = parseInputs();
   const ctx = extractContext();
@@ -42,7 +42,11 @@ export async function run(): Promise<void> {
     cacheWriteTokensOverride: inputs.cacheWriteTokens,
   });
 
-  const completedAt = new Date().toISOString();
+  // Prefer caller-supplied timestamps (workflow_run callers pass the real agent
+  // run_started_at / updated_at). Fall back to self-measured times, which are
+  // nearly identical and will produce durationSeconds ≈ 0.
+  const startedAt = inputs.startedAt || selfStartedAt;
+  const completedAt = inputs.completedAt || new Date().toISOString();
   const durationSeconds = Math.round(
     (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000
   );

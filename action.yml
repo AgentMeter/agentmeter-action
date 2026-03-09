@@ -65,6 +65,14 @@ inputs:
     description: 'Original event name that triggered the agent workflow (issues, pull_request, etc.). Used with trigger_number to format the correct trigger ref.'
     required: false
     default: ''
+  started_at:
+    description: 'ISO 8601 timestamp for when the agent run started. Overrides the action self-measured start time. Use github.event.workflow_run.run_started_at when calling from a workflow_run trigger.'
+    required: false
+    default: ''
+  completed_at:
+    description: 'ISO 8601 timestamp for when the agent run completed. Overrides the action self-measured end time. Use github.event.workflow_run.updated_at when calling from a workflow_run trigger.'
+    required: false
+    default: ''
 
 outputs:
   run_id:

@@ -21,6 +21,8 @@ export function parseInputs(): ActionInputs {
   const postCommentRaw = core.getInput('post_comment');
   const triggerNumberRaw = core.getInput('trigger_number');
   const triggerEvent = core.getInput('trigger_event');
+  const startedAt = core.getInput('started_at');
+  const completedAt = core.getInput('completed_at');
 
   return {
     apiKey,
@@ -38,6 +40,8 @@ export function parseInputs(): ActionInputs {
     postComment: postCommentRaw.toLowerCase() !== 'false',
     triggerNumber: parseIntOrNull(triggerNumberRaw),
     triggerEvent,
+    startedAt,
+    completedAt,
   };
 }
 

@@ -48,6 +48,10 @@ export interface ActionInputs {
   triggerNumber: number | null;
   /** Optional override for the originating event name (for workflow_run callers) */
   triggerEvent: string;
+  /** ISO 8601 start timestamp override (for workflow_run callers) */
+  startedAt: string;
+  /** ISO 8601 completed timestamp override (for workflow_run callers) */
+  completedAt: string;
 }
 
 /** Extracted GitHub Actions context */
