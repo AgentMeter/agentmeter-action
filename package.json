@@ -32,7 +32,7 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && ncc build dist/main.js -o dist --minify --license licenses.txt",
+    "build": "tsc --outDir dist_ts_tmp && ncc build dist_ts_tmp/main.js -o dist --minify --license licenses.txt && rm -rf dist_ts_tmp",
     "build:watch": "tsc --watch",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
