@@ -57,6 +57,14 @@ inputs:
     description: 'Whether to post a cost comment on the PR/issue. Set to false to disable.'
     required: false
     default: 'true'
+  trigger_number:
+    description: 'Issue or PR number to comment on. Use when running via workflow_run where GitHub context does not carry the original trigger number.'
+    required: false
+    default: ''
+  trigger_event:
+    description: 'Original event name that triggered the agent workflow (issues, pull_request, etc.). Used with trigger_number to format the correct trigger ref.'
+    required: false
+    default: ''
 
 outputs:
   run_id:

@@ -19,6 +19,8 @@ export function parseInputs(): ActionInputs {
   const prNumberRaw = core.getInput('pr_number');
   const apiUrl = core.getInput('api_url') || 'https://agentmeter.app';
   const postCommentRaw = core.getInput('post_comment');
+  const triggerNumberRaw = core.getInput('trigger_number');
+  const triggerEvent = core.getInput('trigger_event');
 
   return {
     apiKey,
@@ -34,6 +36,8 @@ export function parseInputs(): ActionInputs {
     prNumber: parseIntOrNull(prNumberRaw),
     apiUrl,
     postComment: postCommentRaw.toLowerCase() !== 'false',
+    triggerNumber: parseIntOrNull(triggerNumberRaw),
+    triggerEvent,
   };
 }
 

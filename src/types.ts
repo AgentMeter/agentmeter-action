@@ -44,6 +44,10 @@ export interface ActionInputs {
   apiUrl: string;
   /** Whether to post a cost comment on the PR/issue */
   postComment: boolean;
+  /** Optional override for trigger number (for workflow_run callers) */
+  triggerNumber: number | null;
+  /** Optional override for the originating event name (for workflow_run callers) */
+  triggerEvent: string;
 }
 
 /** Extracted GitHub Actions context */
