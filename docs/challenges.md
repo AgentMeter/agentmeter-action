@@ -117,31 +117,97 @@ The gate from challenge #1 limits the actual ingest calls to only the ones where
 
 ### Problem
 
-gh-aw agent workflows run Claude Code internally but do not expose the Claude API response (which contains `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens`) as a step output. The `agentmeter-action` has full support for extracting tokens from agent stdout via `agent_output`, but there is no way to capture that output from within a `workflow_run` trigger — the triggering workflow's step outputs are not accessible.
+gh-aw agent workflows run Claude Code internally but do not expose the Claude API response (which contains `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens`) as a step output. The `agentmeter-action` has full support for extracting tokens from agent stdout via `agent_output`, but there is no way to capture that output from within a `workflow_run` trigger — the triggering workflow's step outputs are not accessible via the GitHub REST API (`listJobsForWorkflowRun` only returns step status/timing, not outputs).
 
-As a result, the `tokens` field is omitted from every ingest payload sent from evenloop, and cost shows as `—` in the dashboard.
+As a result, the `tokens` field is omitted from every ingest payload sent from the calling workflow, and cost shows as `—` in the dashboard.
 
 ### Workaround
 
-None currently. The `tokens` field is correctly omitted rather than sending zeroes (which would record a $0.00 cost incorrectly).
+Patch the `agent` job in each generated `.lock.yml` to:
+
+1. Parse Claude Code's `--output-format stream-json` output (already written to `/tmp/gh-aw/agent-stdio.log`) to extract the `"type":"result"` line, which contains the full usage block.
+2. Write the counts to `$GITHUB_OUTPUT` and to a JSON file.
+3. Upload the JSON file as a GitHub Actions artifact named `agent-tokens`.
+4. Expose the four values as job-level outputs.
+
+```yaml
+- name: Extract Claude token usage
+  id: extract_tokens
+  if: always()
+  run: |
+    RESULT_LINE=$(grep -m1 '"type":"result"' /tmp/gh-aw/agent-stdio.log 2>/dev/null || true)
+    if [ -n "$RESULT_LINE" ]; then
+      INPUT=$(echo "$RESULT_LINE" | jq -r '.usage.input_tokens // 0' 2>/dev/null || echo "0")
+      OUTPUT=$(echo "$RESULT_LINE" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo "0")
+      CACHE_READ=$(echo "$RESULT_LINE" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || echo "0")
+      CACHE_WRITE=$(echo "$RESULT_LINE" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo "0")
+    else
+      INPUT=0; OUTPUT=0; CACHE_READ=0; CACHE_WRITE=0
+    fi
+    {
+      echo "input_tokens=$INPUT"
+      echo "output_tokens=$OUTPUT"
+      echo "cache_read_tokens=$CACHE_READ"
+      echo "cache_write_tokens=$CACHE_WRITE"
+    } >> "$GITHUB_OUTPUT"
+    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
+      "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" > /tmp/gh-aw/agent-tokens.json
+- name: Upload token data
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: agent-tokens
+    path: /tmp/gh-aw/agent-tokens.json
+    if-no-files-found: warn
+```
+
+In the companion `agentmeter.yml`, download the artifact using the triggering run's ID (requires `actions: read` permission), parse the JSON, and pass the values as explicit inputs:
+
+```yaml
+- name: Download token data
+  id: download_tokens
+  if: steps.gate.outputs.proceed == 'true'
+  continue-on-error: true
+  uses: actions/download-artifact@v4
+  with:
+    name: agent-tokens
+    run-id: ${{ github.event.workflow_run.id }}
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    path: /tmp/agent-tokens
+
+- name: Parse token data
+  id: tokens
+  if: steps.gate.outputs.proceed == 'true'
+  run: |
+    if [ -f /tmp/agent-tokens/agent-tokens.json ]; then
+      echo "input_tokens=$(jq -r '.input_tokens // 0' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+      echo "output_tokens=$(jq -r '.output_tokens // 0' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+      echo "cache_read_tokens=$(jq -r '.cache_read_tokens // 0' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+      echo "cache_write_tokens=$(jq -r '.cache_write_tokens // 0' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+    else
+      echo "input_tokens=" >> "$GITHUB_OUTPUT"
+      echo "output_tokens=" >> "$GITHUB_OUTPUT"
+      echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+      echo "cache_write_tokens=" >> "$GITHUB_OUTPUT"
+    fi
+
+- name: Track agent run cost
+  uses: foo-software/agentmeter-action@main
+  with:
+    # ... other inputs ...
+    input_tokens: ${{ steps.tokens.outputs.input_tokens }}
+    output_tokens: ${{ steps.tokens.outputs.output_tokens }}
+    cache_read_tokens: ${{ steps.tokens.outputs.cache_read_tokens }}
+    cache_write_tokens: ${{ steps.tokens.outputs.cache_write_tokens }}
+```
+
+#### Important: lock files are regenerated on `gh aw compile`
+
+The `.lock.yml` files are auto-generated by `gh aw compile` from the `.md` workflow sources. Any manual patches are **wiped on the next compile**. To reapply, keep a patch script in your repo (e.g. `scripts/patch-lock-token-outputs.py`) and run it after every compile. The script should use the unique two-line sequence `MCP_TOOL_TIMEOUT: 60000\n      - name: Configure Git credentials` as the insertion anchor — this appears exactly once per file, immediately after the `agentic_execution` step.
 
 ### Better long-term solution
 
-gh-aw needs to expose the agent's token usage as a job output or step summary. Concretely, the `agent` job in each `.lock.yml` would need to capture Claude Code's JSON output and set it as an output variable, e.g.:
-
-```yaml
-- name: Run agent
-  id: agent
-  run: claude ... --output-format json > agent_output.json
-- name: Set token outputs
-  run: |
-    cat agent_output.json | jq -r '.usage.input_tokens' | xargs -I{} echo "input_tokens={}" >> $GITHUB_OUTPUT
-    # etc.
-```
-
-Then the `agentmeter.yml` companion workflow could read those outputs via the GitHub API (`listJobsForWorkflowRun` → step outputs) and pass them as explicit inputs to the action.
-
-Alternatively, AgentMeter could query the GitHub API directly for the triggering run's job logs and attempt to parse token data from them — though log parsing is fragile.
+gh-aw should natively expose Claude Code's token usage as a job output or step summary, eliminating the need to patch generated files. Until then, the artifact approach above is the most reliable option — `actions/download-artifact@v4` with `run-id` is a stable, documented cross-workflow artifact transfer pattern.
 
 ---
 
@@ -153,4 +219,4 @@ Alternatively, AgentMeter could query the GitHub API directly for the triggering
 | Missing trigger number | Pre-step with 3-tier fallback resolution | Action resolves internally from `workflow_run_id` |
 | `skipped` status 422 | Normalize + skip step | API accepts `skipped` or action no-ops it |
 | First-deploy backfill burst | Accepted / no action | N/A — GitHub behavior |
-| Token data not available | Omit `tokens` field (cost shows `—`) | gh-aw exposes Claude usage as job outputs |
+| Token data not available | Patch lock files to extract + upload artifact; download in agentmeter.yml | gh-aw exposes Claude usage as native job outputs |
