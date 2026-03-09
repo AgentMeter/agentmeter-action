@@ -6,7 +6,7 @@ import type { ClaudeCodeOutput, TokenCounts, TokenCountsWithMeta } from './types
  * Returns null if no token data can be found.
  */
 export function extractTokensFromOutput(
-  agentOutput: string,
+  agentOutput: string
 ): { tokens: TokenCounts; isApproximate: boolean } | null {
   if (!agentOutput) return null;
 
@@ -20,7 +20,7 @@ export function extractTokensFromOutput(
  * Tries to parse agent output as JSON and extract usage data.
  */
 function tryExtractFromJson(
-  agentOutput: string,
+  agentOutput: string
 ): { tokens: TokenCounts; isApproximate: boolean } | null {
   try {
     const parsed = JSON.parse(agentOutput) as ClaudeCodeOutput;
@@ -47,7 +47,7 @@ function tryExtractFromJson(
  * Marks extracted data as approximate since regex is not precise.
  */
 function tryExtractFromText(
-  agentOutput: string,
+  agentOutput: string
 ): { tokens: TokenCounts; isApproximate: boolean } | null {
   const inputMatch = agentOutput.match(/input[_\s]tokens?:\s*(\d+)/i);
   const outputMatch = agentOutput.match(/output[_\s]tokens?:\s*(\d+)/i);

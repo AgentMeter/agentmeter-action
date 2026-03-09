@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { mapEventToTriggerType, extractTriggerRef } from '../src/context';
 import type { WebhookPayload } from '@actions/github/lib/interfaces';
+import { describe, expect, it } from 'vitest';
+import { extractTriggerRef, mapEventToTriggerType } from '../src/context';
 
 describe('mapEventToTriggerType', () => {
   it('returns issue_labeled for issues labeled action', () => {
@@ -20,9 +20,7 @@ describe('mapEventToTriggerType', () => {
 
   it('returns pr_synchronize for pull_request synchronize action', () => {
     const payload = { action: 'synchronize' } as WebhookPayload;
-    expect(mapEventToTriggerType('pull_request', payload)).toBe(
-      'pr_synchronize',
-    );
+    expect(mapEventToTriggerType('pull_request', payload)).toBe('pr_synchronize');
   });
 
   it('returns other for unknown pull_request action', () => {
@@ -35,9 +33,7 @@ describe('mapEventToTriggerType', () => {
   });
 
   it('returns pr_comment for pull_request_review_comment event', () => {
-    expect(mapEventToTriggerType('pull_request_review_comment', {})).toBe(
-      'pr_comment',
-    );
+    expect(mapEventToTriggerType('pull_request_review_comment', {})).toBe('pr_comment');
   });
 
   it('returns schedule for schedule event', () => {
@@ -45,9 +41,7 @@ describe('mapEventToTriggerType', () => {
   });
 
   it('returns workflow_dispatch for workflow_dispatch event', () => {
-    expect(mapEventToTriggerType('workflow_dispatch', {})).toBe(
-      'workflow_dispatch',
-    );
+    expect(mapEventToTriggerType('workflow_dispatch', {})).toBe('workflow_dispatch');
   });
 
   it('returns other for unknown events', () => {

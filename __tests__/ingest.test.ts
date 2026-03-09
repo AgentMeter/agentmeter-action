@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as core from '@actions/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { submitRun } from '../src/ingest';
 
 vi.mock('@actions/core');
@@ -67,9 +67,7 @@ describe('submitRun', () => {
     });
 
     expect(result).toBeNull();
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining('401'),
-    );
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('401'));
   });
 
   it('returns null and warns on network failure', async () => {
@@ -84,9 +82,7 @@ describe('submitRun', () => {
     });
 
     expect(result).toBeNull();
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining('AgentMeter ingest failed'),
-    );
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('AgentMeter ingest failed'));
   });
 
   it('retries once on network failure before succeeding', async () => {
@@ -132,7 +128,7 @@ describe('submitRun', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer am_sk_mykey',
         }),
-      }),
+      })
     );
   });
 });

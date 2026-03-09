@@ -1,8 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  extractTokensFromOutput,
-  resolveTokens,
-} from '../src/token-extractor';
+import { describe, expect, it } from 'vitest';
+import { extractTokensFromOutput, resolveTokens } from '../src/token-extractor';
 
 describe('extractTokensFromOutput', () => {
   it('returns null for empty output', () => {

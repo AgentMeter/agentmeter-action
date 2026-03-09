@@ -30,10 +30,7 @@ export function extractContext(): ActionContext {
 /**
  * Maps a GitHub event name and payload to an AgentMeter trigger type string.
  */
-export function mapEventToTriggerType(
-  eventName: string,
-  payload: WebhookPayload,
-): string {
+export function mapEventToTriggerType(eventName: string, payload: WebhookPayload): string {
   if (eventName === 'issues') {
     if (payload.action === 'labeled') return 'issue_labeled';
     return 'other';
@@ -43,10 +40,7 @@ export function mapEventToTriggerType(
     if (payload.action === 'synchronize') return 'pr_synchronize';
     return 'other';
   }
-  if (
-    eventName === 'issue_comment' ||
-    eventName === 'pull_request_review_comment'
-  ) {
+  if (eventName === 'issue_comment' || eventName === 'pull_request_review_comment') {
     return 'pr_comment';
   }
   if (eventName === 'schedule') return 'schedule';
@@ -60,7 +54,7 @@ export function mapEventToTriggerType(
  */
 export function extractTriggerRef(
   eventName: string,
-  payload: WebhookPayload,
+  payload: WebhookPayload
 ): { triggerRef: string | null; triggerNumber: number | null } {
   if (eventName === 'issues' && payload.issue) {
     return {
@@ -69,8 +63,7 @@ export function extractTriggerRef(
     };
   }
   if (
-    (eventName === 'pull_request' ||
-      eventName === 'pull_request_review_comment') &&
+    (eventName === 'pull_request' || eventName === 'pull_request_review_comment') &&
     payload.pull_request
   ) {
     return {
@@ -81,9 +74,7 @@ export function extractTriggerRef(
   if (eventName === 'issue_comment' && payload.issue) {
     const isPR = !!payload.issue.pull_request;
     return {
-      triggerRef: isPR
-        ? `PR #${payload.issue.number}`
-        : `#${payload.issue.number}`,
+      triggerRef: isPR ? `PR #${payload.issue.number}` : `#${payload.issue.number}`,
       triggerNumber: payload.issue.number,
     };
   }

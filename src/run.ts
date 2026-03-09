@@ -1,10 +1,10 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { parseInputs } from './inputs';
-import { extractContext } from './context';
-import { resolveTokens } from './token-extractor';
-import { submitRun } from './ingest';
 import { upsertComment } from './comment';
+import { extractContext } from './context';
+import { submitRun } from './ingest';
+import { parseInputs } from './inputs';
+import { resolveTokens } from './token-extractor';
 
 /**
  * Core run logic — orchestrates all steps of the AgentMeter Action.
@@ -25,7 +25,7 @@ export async function run(): Promise<void> {
 
   const completedAt = new Date().toISOString();
   const durationSeconds = Math.round(
-    (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000,
+    (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000
   );
 
   const result = await submitRun({
@@ -58,9 +58,7 @@ export async function run(): Promise<void> {
     if (inputs.postComment && ctx.triggerNumber !== null) {
       const githubToken = process.env['GITHUB_TOKEN'] ?? '';
       if (!githubToken) {
-        core.warning(
-          'AgentMeter: GITHUB_TOKEN not set, skipping comment posting.',
-        );
+        core.warning('AgentMeter: GITHUB_TOKEN not set, skipping comment posting.');
         return;
       }
       const octokit = github.getOctokit(githubToken);

@@ -65,9 +65,7 @@ export function buildCommentBody({
 
   const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
   const totalRow =
-    allRuns.length > 1
-      ? `| **Total** | | | **${formatCost(totalCostCents)}** | |`
-      : '';
+    allRuns.length > 1 ? `| **Total** | | | **${formatCost(totalCostCents)}** | |` : '';
 
   const latestRun = runData;
   const tokenDetails = buildTokenDetails(latestRun);
@@ -97,11 +95,7 @@ function buildTokenDetails(run: RunCommentData): string | null {
 
   const cacheHitRate =
     tokens.cacheReadTokens + tokens.inputTokens > 0
-      ? Math.round(
-          (tokens.cacheReadTokens /
-            (tokens.cacheReadTokens + tokens.inputTokens)) *
-            100,
-        )
+      ? Math.round((tokens.cacheReadTokens / (tokens.cacheReadTokens + tokens.inputTokens)) * 100)
       : 0;
 
   const rows = [
@@ -150,9 +144,7 @@ interface ParsedRun {
  */
 function parseExistingRuns(body: string): ParsedRun[] {
   try {
-    const tableMatch = body.match(
-      /\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s,
-    );
+    const tableMatch = body.match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);
     if (!tableMatch?.[1]) return [];
 
     const rows = tableMatch[1]
@@ -174,9 +166,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
         const totalCostCents = Math.round(parseFloat(costStr) * 100);
 
         const status =
-          Object.entries(STATUS_EMOJI).find(
-            ([, emoji]) => emoji === statusEmoji,
-          )?.[0] ?? 'other';
+          Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
 
         const parsed: ParsedRun = {
           workflowName,

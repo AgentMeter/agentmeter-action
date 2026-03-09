@@ -5,10 +5,7 @@ import type { IngestPayload, IngestResponse } from './types';
  * Makes a fetch call with one retry on network failure.
  * Does not retry on 4xx/5xx HTTP responses.
  */
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit): Promise<Response> {
   try {
     return await fetch(url, { ...options, signal: AbortSignal.timeout(10_000) });
   } catch {
@@ -46,9 +43,7 @@ export async function submitRun({
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      core.warning(
-        `AgentMeter ingest returned ${response.status}: ${body}. Continuing.`,
-      );
+      core.warning(`AgentMeter ingest returned ${response.status}: ${body}. Continuing.`);
       return null;
     }
 

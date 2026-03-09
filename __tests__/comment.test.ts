@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildCommentBody } from '../src/comment';
 import type { RunCommentData } from '../src/types';
 
