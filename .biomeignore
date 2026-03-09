@@ -1,0 +1,18 @@
+# Build outputs
+**/.next/**
+**/dist/**
+**/build/**
+**/coverage/**
+**/playwright-report/**
+**/test-results/**
+**/.turbo/**
+**/.cache/**
+**/.vercel/**
+**/.wrangler/**
+**/.parcel-cache/**
+**/.vite/**
+**/.eslintcache/**
+**/.nyc_output/**
+**/.storybook/**
+**/.cursor/**
+logs/**
