@@ -33,7 +33,7 @@ steps:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
       prompt: "Implement the feature described in this issue"
 
-  - uses: agentmeter/agentmeter-action@v1
+  - uses: foo-software/agentmeter-action@v1
     if: always()  # Run even if the agent step fails
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -44,7 +44,7 @@ steps:
 ### With explicit token counts
 
 ```yaml
-  - uses: agentmeter/agentmeter-action@v1
+  - uses: foo-software/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -60,7 +60,7 @@ steps:
 ### With JSON output from the agent (auto-extraction)
 
 ```yaml
-  - uses: agentmeter/agentmeter-action@v1
+  - uses: foo-software/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -71,7 +71,7 @@ steps:
 ### With PR number from agent output
 
 ```yaml
-  - uses: agentmeter/agentmeter-action@v1
+  - uses: foo-software/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -83,7 +83,7 @@ steps:
 ### Disable comment posting
 
 ```yaml
-  - uses: agentmeter/agentmeter-action@v1
+  - uses: foo-software/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -127,7 +127,7 @@ steps:
 ### Approach A — Pass raw JSON output from the agent step
 
 ```yaml
-- uses: agentmeter/agentmeter-action@v1
+- uses: foo-software/agentmeter-action@v1
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
     agent_output: ${{ steps.agent.outputs.response }}
@@ -138,7 +138,7 @@ The action parses the JSON to extract token counts automatically.
 ### Approach B — Explicit token counts
 
 ```yaml
-- uses: agentmeter/agentmeter-action@v1
+- uses: foo-software/agentmeter-action@v1
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
     input_tokens: ${{ steps.agent.outputs.input_tokens }}
@@ -150,7 +150,7 @@ The action parses the JSON to extract token counts automatically.
 ### Approach C — No token data (minimal tracking)
 
 ```yaml
-- uses: agentmeter/agentmeter-action@v1
+- uses: foo-software/agentmeter-action@v1
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
     status: ${{ steps.agent.outcome }}
@@ -196,7 +196,7 @@ If the action runs again on the same PR/issue, it updates the existing comment (
 Place `if: always()` on the AgentMeter step so it runs even when the agent step fails. This ensures failed runs are tracked too.
 
 ```yaml
-- uses: agentmeter/agentmeter-action@v1
+- uses: foo-software/agentmeter-action@v1
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}

@@ -151,7 +151,7 @@ The CI workflow (`.github/workflows/ci.yml`) runs on every push and PR:
 The build workflow (`.github/workflows/build.yml`) runs on pushes to `main`:
 
 1. Builds the dist bundle
-2. Auto-commits any changes to `dist/` (required for the action to work when referenced via `uses: agentmeter/agentmeter-action@v1`)
+2. Auto-commits any changes to `dist/` (required for the action to work when referenced via `uses: foo-software/agentmeter-action@v1`)
 
 ---
 
