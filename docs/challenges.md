@@ -113,6 +113,38 @@ The gate from challenge #1 limits the actual ingest calls to only the ones where
 
 ---
 
+## 5. Token data unavailable from gh-aw agent runs
+
+### Problem
+
+gh-aw agent workflows run Claude Code internally but do not expose the Claude API response (which contains `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens`) as a step output. The `agentmeter-action` has full support for extracting tokens from agent stdout via `agent_output`, but there is no way to capture that output from within a `workflow_run` trigger — the triggering workflow's step outputs are not accessible.
+
+As a result, the `tokens` field is omitted from every ingest payload sent from evenloop, and cost shows as `—` in the dashboard.
+
+### Workaround
+
+None currently. The `tokens` field is correctly omitted rather than sending zeroes (which would record a $0.00 cost incorrectly).
+
+### Better long-term solution
+
+gh-aw needs to expose the agent's token usage as a job output or step summary. Concretely, the `agent` job in each `.lock.yml` would need to capture Claude Code's JSON output and set it as an output variable, e.g.:
+
+```yaml
+- name: Run agent
+  id: agent
+  run: claude ... --output-format json > agent_output.json
+- name: Set token outputs
+  run: |
+    cat agent_output.json | jq -r '.usage.input_tokens' | xargs -I{} echo "input_tokens={}" >> $GITHUB_OUTPUT
+    # etc.
+```
+
+Then the `agentmeter.yml` companion workflow could read those outputs via the GitHub API (`listJobsForWorkflowRun` → step outputs) and pass them as explicit inputs to the action.
+
+Alternatively, AgentMeter could query the GitHub API directly for the triggering run's job logs and attempt to parse token data from them — though log parsing is fragile.
+
+---
+
 ## Summary table
 
 | Challenge | Current workaround | Ideal fix |
@@ -121,3 +153,4 @@ The gate from challenge #1 limits the actual ingest calls to only the ones where
 | Missing trigger number | Pre-step with 3-tier fallback resolution | Action resolves internally from `workflow_run_id` |
 | `skipped` status 422 | Normalize + skip step | API accepts `skipped` or action no-ops it |
 | First-deploy backfill burst | Accepted / no action | N/A — GitHub behavior |
+| Token data not available | Omit `tokens` field (cost shows `—`) | gh-aw exposes Claude usage as job outputs |
