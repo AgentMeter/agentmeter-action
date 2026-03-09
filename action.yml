@@ -18,7 +18,7 @@ inputs:
     required: false
     default: 'claude'
   agent_output:
-    description: 'Stdout from the agent step (for JSON token extraction). Pass using ${{ steps.agent.outputs.response }} or similar.'
+    description: 'Stdout from the agent step (for JSON token extraction). Pass the output of your agent step here.'
     required: false
     default: ''
   input_tokens:
