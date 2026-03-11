@@ -1,0 +1,28 @@
+name: AgentMeter — Inline Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AgentMeter action (inline mode)
+        uses: ./
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: claude
+          model: claude-sonnet-4-5
+          status: success
+          input_tokens: 1000
+          output_tokens: 500
+          cache_read_tokens: 8000
+          cache_write_tokens: 200
+          post_comment: 'true'
