@@ -16,8 +16,9 @@ jobs:
       issues: write      # required to post cost comments
       pull-requests: write
     steps:
+      - uses: actions/checkout@v4
       - name: Track agent run cost
-        uses: foo-software/agentmeter-action@main
+        uses: ./
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
