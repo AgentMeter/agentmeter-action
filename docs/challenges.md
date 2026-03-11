@@ -1,167 +1,165 @@
-# Known Challenges with `workflow_run` Integration
+# Production Readiness: Known Challenges and Caveats
 
-When using `agentmeter-action` via a `workflow_run` trigger (the required pattern for tracking gh-aw / multi-job agent workflows), several non-obvious problems arise. This document captures each one, the current status, and the solution.
-
----
-
-## 1. Multiple firings per agent run
-
-### Status: ✅ Solved — handled automatically inside the action
-
-### Problem
-
-`workflow_run` fires once **per job completion**, not once per workflow completion. gh-aw workflows have 5 jobs (`pre_activation`, `activation`, `agent`, `safe_outputs`, `conclusion`), so a single agent run produces 4–5 `workflow_run` events — and therefore 4–5 potential ingest calls.
-
-### Solution
-
-When `workflow_run_id` is provided, the action calls `listJobsForWorkflowRun` internally and checks whether the terminal `conclusion` job has completed. If it hasn't, the action exits immediately and skips ingestion. This produces exactly 1 ingest call per agent run.
-
-If the API call fails (e.g. a non-gh-aw workflow that has no `conclusion` job), the gate is bypassed and ingestion proceeds — fail-open rather than fail-closed.
+Honest assessment for maintainers and users before going to production.
 
 ---
 
-## 2. Missing trigger number (issue/PR)
+## Usage modes
 
-### Status: ✅ Solved — handled automatically inside the action
+The action supports two fundamentally different usage patterns. It's important to understand which one a user is in before diagnosing any issue.
 
-### Problem
+### Mode A — Inline (same workflow as the agent)
 
-When a workflow fires via `workflow_run`, `github.context` reflects the *AgentMeter workflow's* event — not the original issue or PR that triggered the agent. So the action cannot extract `triggerNumber` from context automatically.
-
-### Solution
-
-Pass `workflow_run_id: ${{ github.event.workflow_run.id }}` to the action. When set, the action calls `getWorkflowRun` internally and extracts the trigger number from:
-
-1. `pull_requests[]` array — populated for PR-triggered workflows
-2. Branch name pattern (`agent/issue-N`) — the naming convention used by gh-aw
-
-No user-facing pre-steps required.
-
----
-
-## 3. `skipped` is not a valid ingest status
-
-### Status: ✅ Solved — handled automatically inside the action
-
-### Problem
-
-`workflow_run.conclusion` can be `skipped` when jobs have unmet `if:` conditions. The AgentMeter API only accepts `running | success | failed | timed_out | cancelled | needs_human`.
-
-### Solution
-
-When `workflow_run_id` is provided, the action normalizes the raw conclusion value internally:
-
-| GitHub conclusion | AgentMeter status |
-|---|---|
-| `success` | `success` |
-| `failure` | `failed` |
-| `timed_out` | `timed_out` |
-| `cancelled` | `cancelled` |
-| `skipped` | *(skipped — nothing to track)* |
-| anything else | `failed` |
-
-Users pass `status: ${{ github.event.workflow_run.conclusion }}` raw — no normalization step needed.
-
----
-
-## 4. Token data unavailable from agent runs
-
-### Status: ✅ Solved for gh-aw — other engines need explicit inputs
-
-### Problem
-
-The action can't observe another workflow's Claude API responses directly. Token counts must come from somewhere.
-
-### Solution (gh-aw)
-
-gh-aw's compiled workflows write an `agent-tokens.json` artifact containing the four token counts extracted from Claude Code's `stream-json` output. When `workflow_run_id` is provided, the action:
-
-1. Lists artifacts for the triggering run
-2. Downloads `agent-tokens` as a zip
-3. Parses the JSON in-memory (no tmp files, no shell steps)
-4. Uses the counts directly
-
-Zero user-facing config required beyond `workflow_run_id`.
-
-### Other engines
-
-- **Custom workflows (any engine):** pass `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` as explicit inputs — callers have this data in code.
-- **Fully managed agents (GitHub Copilot coding agent, etc.):** no custom workflow YAML exists; token data not currently accessible. Cost will show as `—` in the dashboard.
-
----
-
-## 5. First-deploy backfill burst
-
-### Status: Expected behavior — no action needed
-
-### Problem
-
-When a `workflow_run` workflow is first pushed, GitHub retroactively triggers it for all recently-completed matching workflows. This causes a burst of ~15-20 runs within seconds of the initial deploy.
-
-### Notes
-
-One-time per deploy. The gate (challenge #1) limits actual ingest calls to runs where the `conclusion` job was the triggering job, so most of the burst is instant no-ops.
-
----
-
-## Minimum companion workflow (gh-aw)
-
-With all challenges solved inside the action, the full companion `agentmeter.yml` is:
+The action runs as a step directly after the agent step. This is the simplest case. GitHub context is fully available, timestamps are accurate, and token counts come from either explicit inputs or the agent's stdout.
 
 ```yaml
-name: AgentMeter — Track Agent Costs
+- uses: anthropics/claude-code-action@v1
+  id: agent
+  with:
+    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    prompt: "..."
 
-on:
-  workflow_run:
-    workflows:
-      - "Agent: My Workflow"
-    types:
-      - completed
-
-jobs:
-  track:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read        # required — lets the action gate on the conclusion job
-      contents: read
-      issues: write        # required — lets the action post cost comments
-      pull-requests: write
-    steps:
-      - uses: foo-software/agentmeter-action@main
-        with:
-          api_key: ${{ secrets.AGENTMETER_API_KEY }}
-          engine: claude
-          model: ${{ vars.GH_AW_MODEL_AGENT_CLAUDE }}
-          status: ${{ github.event.workflow_run.conclusion }}
-          workflow_run_id: ${{ github.event.workflow_run.id }}
+- uses: foo-software/agentmeter-action@main
+  if: always()
+  with:
+    api_key: ${{ secrets.AGENTMETER_API_KEY }}
+    status: ${{ steps.agent.outcome }}
+    model: claude-sonnet-4-5
+    input_tokens: ${{ steps.agent.outputs.input_tokens }}
+    output_tokens: ${{ steps.agent.outputs.output_tokens }}
 ```
 
+**This mode has no meaningful caveats.** It works with any agent framework that exposes token counts as outputs or stdout.
+
+### Mode B — Companion workflow (workflow_run trigger)
+
+Required for gh-aw and any agent framework where the agent runs in a separate workflow. The action runs in a second workflow that triggers on `workflow_run: completed`. The `workflow_run_id` input enables automatic resolution of everything.
+
+This is the complex mode and the source of most of the challenges below.
+
 ---
 
-## Summary table
+## Mode B challenges
 
-| Challenge | Status | Notes |
+### 1. The gate is gh-aw-specific and fragile
+
+**What it does:** When `workflow_run_id` is set, the action calls `listJobsForWorkflowRun` and checks for a job named exactly `conclusion`. If that job hasn't completed, it exits early — preventing duplicate ingestion across gh-aw's ~5 `workflow_run` firings.
+
+**The problem:** This assumes the terminal job is named `conclusion`. That's gh-aw's naming convention. Any other multi-job framework with a differently-named terminal job will pass through the gate unconditionally (the API call succeeds but no `conclusion` job is found → gate returns `true` → proceeds). This means:
+
+- A single-job workflow: works fine — gate passes, one ingest.
+- A multi-job workflow where the terminal job is named something other than `conclusion`: **will ingest once per job completion** unless the user adds their own dedup logic.
+
+**Workaround:** Users of non-gh-aw multi-job frameworks should not use `workflow_run_id` with `post_comment: true` unless they understand this — they'll get duplicate comments. They can either use the inline mode instead, or accept that cost will be tracked per-job (wasteful but not broken if the API is idempotent by run ID).
+
+**Better fix:** Make the gate job name configurable via an input (`gate_job_name`), defaulting to `conclusion`. Or implement backend dedup by `(githubRunId, workflowName)`.
+
+---
+
+### 2. Token data requires manual lock file patching (gh-aw)
+
+**What it does:** The action downloads an `agent-tokens` artifact from the triggering run and parses a JSON file inside the zip. This is how token counts cross the workflow boundary.
+
+**The problem:** gh-aw's `.lock.yml` files are auto-generated by `gh aw compile`. The steps that extract and upload the `agent-tokens.json` artifact are manually patched in. **Every time the workflow is recompiled, those steps are overwritten and must be re-added.** There is no hook or extension point in gh-aw to persist custom steps through recompilation.
+
+This is the single largest operational burden for gh-aw users in production. If they forget to re-patch after a recompile, cost tracking silently degrades to `—` (no error, just missing token data).
+
+**Workaround:** Commit `.lock.yml` to version control and treat the patch steps as a diff to reapply. Document it in onboarding. Could potentially script it with a post-compile hook.
+
+**Better fix:** Upstream feature request to gh-aw to support custom step injection, or to expose token counts natively as outputs.
+
+---
+
+### 3. The zip parsing is a hack
+
+**What it does:** `parseAgentTokensZip` decodes the artifact zip as UTF-8 text and uses a regex to find `{"input_tokens":...}` rather than properly parsing the zip format.
+
+**Why:** Avoiding a runtime dependency (e.g. `adm-zip`) to keep `dist/index.js` small and the build simple.
+
+**The risk:** If the artifact zip ever contains multiple files, or the JSON keys are reordered, or the file grows to include other data before the `input_tokens` key, the regex will fail silently (returns `undefined`, no error). Currently the artifact is always a single-file zip with a known structure, so this is fine — but it's a quiet assumption.
+
+**Better fix:** Add `adm-zip` or `fflate` as a proper zip parser. It's a small addition.
+
+---
+
+### 4. `pull_requests` is empty for issue-triggered workflows on re-runs
+
+**What it does:** The action resolves the PR number from `data.pull_requests` on the workflow run object, then falls back to the branch name pattern (`agent/issue-N`).
+
+**The problem:** `pull_requests` is populated by GitHub's API at run creation time. For PR-triggered runs, it's reliable. For issue-triggered runs, the fallback branch pattern (`agent/issue-N`) works for gh-aw. But:
+
+- If the user's branch naming doesn't follow `agent/issue-N` (or `issue-N`), the trigger number resolves as `null` and no comment is posted.
+- For direct-push triggers with no associated PR or issue, `triggerNumber` is always `null` — this is correct behavior, not a bug, but users may be confused why no comment appears.
+
+**Workaround:** Users can always pass `trigger_number` explicitly to override resolution.
+
+---
+
+### 5. `githubRunId` in the payload is the companion workflow's run ID, not the agent's
+
+**What it's currently:** `ctx.runId` comes from `github.context.runId`, which is the run ID of the *AgentMeter companion workflow*, not the agent workflow that actually did the work.
+
+**Why this matters:** If AgentMeter's backend ever needs to deduplicate by run ID, or link to the actual agent run, it has the wrong ID. The agent's run ID is `workflowRunId` (the input).
+
+**Workaround:** Could swap `ctx.runId` for `inputs.workflowRunId` when the latter is set. Currently not done — would be a one-liner in `run.ts`.
+
+---
+
+### 6. No token data for non-gh-aw `workflow_run` setups
+
+If a user is running an agent in a separate workflow without gh-aw, there's no standard artifact to fetch. They'd need to upload their own `agent-tokens.json` artifact in the same format:
+
+```json
+{
+  "input_tokens": 1000,
+  "output_tokens": 200,
+  "cache_read_tokens": 500,
+  "cache_write_tokens": 100
+}
+```
+
+This works — the action will pick it up — but it's not documented anywhere yet.
+
+---
+
+### 7. `completedAt` may lag the actual agent completion
+
+**What it does:** `completedAt` comes from `data.updated_at` on the workflow run, which GitHub updates as the run progresses. By the time the companion workflow fires and fetches it, the value should be accurate for the agent run's last job.
+
+**The risk:** If there's significant time between the agent run completing and the companion workflow fetching the run data (e.g. GitHub API lag, queuing delay), `updated_at` will still be correct — it reflects when the run last changed, not when the fetch happened. This is fine in practice.
+
+---
+
+## Mode A caveats
+
+### 8. `if: always()` is the user's responsibility
+
+If the user omits `if: always()` on the AgentMeter step, failed agent runs won't be tracked. The action has no way to enforce this. It's a documentation / onboarding problem.
+
+---
+
+## What works regardless of mode
+
+- The action **never fails the workflow** — all errors are `core.warning()`, not `core.setFailed()`. A broken API key, network outage, or bad config degrades gracefully to a no-op.
+- `GITHUB_TOKEN` is always available — no secret to configure.
+- Comment upsert (update-in-place rather than new comment per run) works correctly.
+- All four token types (input, output, cache read, cache write) are tracked when available.
+
+---
+
+## Before going to production: checklist
+
+| Item | Status | Notes |
 |---|---|---|
-| 4–5 ingests per agent run | ✅ Solved | Action gates on `conclusion` job via `workflow_run_id` |
-| Missing trigger number | ✅ Solved | Action resolves from run API via `workflow_run_id` |
-| `skipped` status 422 | ✅ Solved | Action normalizes conclusion internally via `workflow_run_id` |
-| First-deploy backfill burst | Accepted | One-time; gate makes it cheap |
-| Token data unavailable | ✅ Solved for gh-aw | Action fetches `agent-tokens` artifact via `workflow_run_id` |
-
----
-
-## Security and data collection
-
-The action only ever receives:
-
-- **Token counts** (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`) — integers
-- **Run metadata**: GitHub run ID, repo name, workflow name, PR/issue number, model name, status, duration
-
-It does **not** receive or transmit:
-
-- Agent conversation content
-- Prompts or instructions
-- Code diffs or file contents
-- Repository secrets or environment variables
-
-For gh-aw specifically: the `agent-tokens.json` artifact contains only the four integer token counts extracted from Claude Code's output — not the conversation log itself. The full `agent-stdio.log` never leaves the runner.
+| Gate is gh-aw-specific | ⚠️ Known limitation | Works for single-job workflows; multi-job non-gh-aw users at risk of duplicates |
+| Lock file patching | ⚠️ Manual step | Must re-patch after every `gh aw compile` |
+| Zip parsing is regex-based | ⚠️ Fragile assumption | Fine while artifact is single-file; should use a real zip parser before v1 |
+| `githubRunId` is companion workflow ID | ⚠️ Misleading | Should swap for agent run ID when `workflow_run_id` is set |
+| Token data for non-gh-aw `workflow_run` | ⚠️ Undocumented | Works if user uploads correct artifact; needs docs |
+| `if: always()` enforcement | ⚠️ User error risk | Documentation only |
+| Trigger number resolution | ✅ Works | PR array + branch pattern fallback |
+| Status normalization | ✅ Works | Raw GitHub conclusion mapped internally |
+| Multiple firing dedup | ✅ Works for gh-aw | Gate on `conclusion` job name |
+| Timestamps / duration | ✅ Works | Sourced from workflow run API |
+| Workflow name | ✅ Works | Uses agent workflow name, not companion |
+| Comment posting | ✅ Works | Upsert by marker, correct PR/issue number |
