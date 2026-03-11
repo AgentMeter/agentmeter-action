@@ -70,15 +70,9 @@ This is the single largest operational burden for gh-aw users in production. If 
 
 ---
 
-### 3. The zip parsing is a hack
+### 3. The zip parsing was a hack
 
-**What it does:** `parseAgentTokensZip` decodes the artifact zip as UTF-8 text and uses a regex to find `{"input_tokens":...}` rather than properly parsing the zip format.
-
-**Why:** Avoiding a runtime dependency (e.g. `adm-zip`) to keep `dist/index.js` small and the build simple.
-
-**The risk:** If the artifact zip ever contains multiple files, or the JSON keys are reordered, or the file grows to include other data before the `input_tokens` key, the regex will fail silently (returns `undefined`, no error). Currently the artifact is always a single-file zip with a known structure, so this is fine — but it's a quiet assumption.
-
-**Better fix:** Add `adm-zip` or `fflate` as a proper zip parser. It's a small addition.
+**Status: ✅ Fixed** — replaced with `fflate`'s `unzipSync`, which properly decompresses and indexes files by name. `agent-tokens.json` is looked up directly.
 
 ---
 
@@ -97,11 +91,7 @@ This is the single largest operational burden for gh-aw users in production. If 
 
 ### 5. `githubRunId` in the payload is the companion workflow's run ID, not the agent's
 
-**What it's currently:** `ctx.runId` comes from `github.context.runId`, which is the run ID of the *AgentMeter companion workflow*, not the agent workflow that actually did the work.
-
-**Why this matters:** If AgentMeter's backend ever needs to deduplicate by run ID, or link to the actual agent run, it has the wrong ID. The agent's run ID is `workflowRunId` (the input).
-
-**Workaround:** Could swap `ctx.runId` for `inputs.workflowRunId` when the latter is set. Currently not done — would be a one-liner in `run.ts`.
+**Status: ✅ Fixed** — when `workflow_run_id` is set, the payload now uses that value as `githubRunId` instead of `ctx.runId`.
 
 ---
 
@@ -153,8 +143,8 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 |---|---|---|
 | Gate is gh-aw-specific | ⚠️ Known limitation | Works for single-job workflows; multi-job non-gh-aw users at risk of duplicates |
 | Lock file patching | ⚠️ Manual step | Must re-patch after every `gh aw compile` |
-| Zip parsing is regex-based | ⚠️ Fragile assumption | Fine while artifact is single-file; should use a real zip parser before v1 |
-| `githubRunId` is companion workflow ID | ⚠️ Misleading | Should swap for agent run ID when `workflow_run_id` is set |
+| Zip parsing | ✅ Fixed | Uses `fflate` — proper zip decompression, no regex |
+| `githubRunId` is companion workflow ID | ✅ Fixed | Uses agent run ID when `workflow_run_id` is set |
 | Token data for non-gh-aw `workflow_run` | ⚠️ Undocumented | Works if user uploads correct artifact; needs docs |
 | `if: always()` enforcement | ⚠️ User error risk | Documentation only |
 | Trigger number resolution | ✅ Works | PR array + branch pattern fallback |
@@ -163,3 +153,5 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 | Timestamps / duration | ✅ Works | Sourced from workflow run API |
 | Workflow name | ✅ Works | Uses agent workflow name, not companion |
 | Comment posting | ✅ Works | Upsert by marker, correct PR/issue number |
+| `GITHUB_TOKEN` availability | ✅ Fixed | `github_token` input with `default: ${{ github.token }}` — no manual wiring needed |
+| Node.js version | ✅ Fixed | Upgraded to node24 (node20 deprecated June 2026) |
