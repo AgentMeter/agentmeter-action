@@ -89,7 +89,16 @@ export async function resolveWorkflowRun({
 
   const tokens = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
 
-  return { startedAt, completedAt, triggerNumber, triggerEvent, tokens, shouldProceed: true, normalizedStatus, workflowName: run?.name ?? '' };
+  return {
+    startedAt,
+    completedAt,
+    triggerNumber,
+    triggerEvent,
+    tokens,
+    shouldProceed: true,
+    normalizedStatus,
+    workflowName: run?.name ?? '',
+  };
 }
 
 /**
