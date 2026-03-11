@@ -82,9 +82,13 @@ export async function resolveWorkflowRun({
   const startedAt = run?.run_started_at ?? new Date().toISOString();
   const completedAt = run?.updated_at ?? new Date().toISOString();
 
-  const { triggerNumber, triggerEvent } = resolveTrigger({
+  const { triggerNumber, triggerEvent } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
     headBranch: run?.head_branch ?? '',
+    event: run?.event ?? '',
+    octokit,
+    owner,
+    repo,
   });
 
   const tokens = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
@@ -203,6 +207,7 @@ async function fetchRun({
   run_started_at?: string | null;
   updated_at?: string | null;
   head_branch?: string | null;
+  event?: string | null;
   name?: string | null;
   pull_requests?: Array<{ number: number }>;
 } | null> {
@@ -216,6 +221,7 @@ async function fetchRun({
       run_started_at: data.run_started_at,
       updated_at: data.updated_at,
       head_branch: data.head_branch,
+      event: data.event,
       name: data.name,
       pull_requests: (data.pull_requests ?? []).map((pr) => ({ number: pr.number })),
     };
@@ -227,22 +233,55 @@ async function fetchRun({
 
 /**
  * Resolves the trigger PR/issue number and event name from the workflow run.
- * Checks the pull_requests array first, then falls back to branch name convention.
+ * Checks the pull_requests array first, then falls back to a PR list lookup
+ * by head branch (handles the common case where GitHub leaves pull_requests[]
+ * empty for workflow_run events), then the branch name convention for issues.
  */
-function resolveTrigger({
+async function resolveTrigger({
   headBranch,
+  event,
+  octokit,
+  owner,
   pullRequests,
+  repo,
 }: {
   /** Head branch name of the triggering run */
   headBranch: string;
+  /** Event that triggered the original workflow run */
+  event: string;
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
   /** Pull requests associated with the triggering run */
   pullRequests: Array<{ number: number }>;
-}): { triggerNumber: number | null; triggerEvent: string } {
+  /** Repository name */
+  repo: string;
+}): Promise<{ triggerNumber: number | null; triggerEvent: string }> {
   if (pullRequests.length > 0 && pullRequests[0]) {
     return {
       triggerNumber: pullRequests[0].number,
       triggerEvent: 'pull_request',
     };
+  }
+
+  // GitHub frequently leaves pull_requests[] empty for workflow_run events even
+  // when the triggering workflow ran on a PR. Look up open PRs by head branch.
+  if (event === 'pull_request' && headBranch) {
+    try {
+      const { data: prs } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        head: `${owner}:${headBranch}`,
+        state: 'open',
+        per_page: 1,
+      });
+      if (prs[0]) {
+        return { triggerNumber: prs[0].number, triggerEvent: 'pull_request' };
+      }
+    } catch (error) {
+      core.warning(`AgentMeter: could not look up PR for branch ${headBranch}: ${error}`);
+    }
   }
 
   // gh-aw issue branches are named agent/issue-N
@@ -254,7 +293,7 @@ function resolveTrigger({
     };
   }
 
-  return { triggerNumber: null, triggerEvent: '' };
+  return { triggerNumber: null, triggerEvent: event || '' };
 }
 
 /**

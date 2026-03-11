@@ -24,6 +24,7 @@ function makeOctokit({
     run_started_at: '2026-03-09T10:00:00Z',
     updated_at: '2026-03-09T10:05:00Z',
     head_branch: 'feat/my-feature',
+    event: 'pull_request',
     pull_requests: [
       {
         number: 42,
@@ -42,6 +43,9 @@ function makeOctokit({
         listJobsForWorkflowRun: vi.fn().mockResolvedValue({ data: { jobs } }),
         listWorkflowRunArtifacts: vi.fn().mockResolvedValue({ data: { artifacts } }),
         downloadArtifact: vi.fn().mockResolvedValue({ data: artifactZip }),
+      },
+      pulls: {
+        list: vi.fn().mockResolvedValue({ data: [] }),
       },
     },
   };
@@ -139,6 +143,25 @@ describe('resolveWorkflowRun', () => {
     expect(result.triggerEvent).toBe('pull_request');
   });
 
+  it('resolves trigger number via PR list API when pull_requests array is empty', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        run_started_at: '2026-03-09T10:00:00Z',
+        updated_at: '2026-03-09T10:05:00Z',
+        head_branch: 'chore/cleanup',
+        event: 'pull_request',
+        pull_requests: [],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({ data: [{ number: 7 }] });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBe(7);
+    expect(result.triggerEvent).toBe('pull_request');
+  });
+
   it('resolves trigger number from branch name when no pull_requests', async () => {
     const octokit = makeOctokit({
       runData: {
@@ -162,6 +185,7 @@ describe('resolveWorkflowRun', () => {
         run_started_at: '2026-03-09T10:00:00Z',
         updated_at: '2026-03-09T10:05:00Z',
         head_branch: 'main',
+        event: 'push',
         pull_requests: [],
       },
     });
@@ -170,7 +194,7 @@ describe('resolveWorkflowRun', () => {
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.triggerNumber).toBeNull();
-    expect(result.triggerEvent).toBe('');
+    expect(result.triggerEvent).toBe('push');
   });
 
   it('returns undefined tokens when no agent-tokens artifact exists', async () => {

@@ -85,6 +85,8 @@ export async function run(): Promise<void> {
       ? buildTriggerRef(resolvedTriggerNumber, resolvedTriggerEvent)
       : ctx.triggerRef;
 
+  const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
+
   const durationSeconds = Math.round(
     (new Date(resolvedCompletedAt).getTime() - new Date(resolvedStartedAt).getTime()) / 1000
   );
@@ -96,7 +98,7 @@ export async function run(): Promise<void> {
       githubRunId: inputs.workflowRunId ?? ctx.runId,
       repoFullName: ctx.repoFullName,
       workflowName: resolvedWorkflowName,
-      triggerType: resolvedTriggerEvent,
+      triggerType,
       triggerRef,
       triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
