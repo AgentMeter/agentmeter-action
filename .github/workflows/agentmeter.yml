@@ -1,0 +1,145 @@
+name: AgentMeter — Track Agent Costs
+
+on:
+  workflow_run:
+    workflows:
+      - "Agent: Code Review"
+    types:
+      - completed
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # gh-aw workflows have multiple jobs (pre_activation, activation, agent,
+      # safe_outputs, conclusion). workflow_run fires for each completed job.
+      # Only proceed when the terminal "conclusion" job has completed so we
+      # track exactly one record per agent run.
+      - name: Check if conclusion job completed
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = context.payload.workflow_run.id;
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            const conclusionJob = data.jobs.find(j => j.name === 'conclusion');
+            if (!conclusionJob || conclusionJob.status !== 'completed') {
+              console.log('conclusion job not yet completed — skipping');
+              core.setOutput('proceed', 'false');
+            } else {
+              console.log(`conclusion job completed with: ${conclusionJob.conclusion}`);
+              core.setOutput('proceed', 'true');
+            }
+
+      - name: Resolve trigger number
+        id: trigger
+        if: steps.gate.outputs.proceed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+
+            // PR-triggered: pull_requests array is populated
+            if (run.pull_requests && run.pull_requests.length > 0) {
+              const pr = run.pull_requests[0];
+              core.setOutput('number', String(pr.number));
+              core.setOutput('event_name', 'pull_request');
+              console.log(`Resolved PR #${pr.number} from pull_requests array`);
+              return;
+            }
+
+            // Fallback: look for an open PR with this head branch
+            const branch = run.head_branch ?? '';
+            try {
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${context.repo.owner}:${branch}`,
+                per_page: 1,
+              });
+              if (prs.length > 0) {
+                core.setOutput('number', String(prs[0].number));
+                core.setOutput('event_name', 'pull_request');
+                console.log(`Resolved PR #${prs[0].number} via head branch lookup`);
+                return;
+              }
+            } catch (e) {
+              console.log(`PR lookup failed: ${e.message}`);
+            }
+
+            console.log('Could not resolve trigger number — comment will be skipped');
+            core.setOutput('number', '');
+            core.setOutput('event_name', '');
+
+      - name: Normalize conclusion
+        id: conclusion
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          case "${{ github.event.workflow_run.conclusion }}" in
+            success)   echo "status=success"   >> "$GITHUB_OUTPUT" ;;
+            failure)   echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
+            timed_out) echo "status=timed_out" >> "$GITHUB_OUTPUT" ;;
+            cancelled) echo "status=cancelled" >> "$GITHUB_OUTPUT" ;;
+            skipped)   echo "status=skip"      >> "$GITHUB_OUTPUT" ;;
+            *)         echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # Download the agent-tokens.json artifact uploaded by the agent job's
+      # "Upload token data" step (added by gh-aw's compiled workflow).
+      - name: Download token data
+        id: download_tokens
+        if: steps.gate.outputs.proceed == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-tokens
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/agent-tokens
+
+      - name: Parse token data
+        id: tokens
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          if [ -f /tmp/agent-tokens/agent-tokens.json ]; then
+            echo "input_tokens=$(jq -r '.input_tokens // empty' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=$(jq -r '.output_tokens // empty' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=$(jq -r '.cache_read_tokens // empty' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+            echo "cache_write_tokens=$(jq -r '.cache_write_tokens // empty' /tmp/agent-tokens/agent-tokens.json)" >> "$GITHUB_OUTPUT"
+            echo "Token data loaded successfully"
+          else
+            echo "Token artifact not found — proceeding without token data"
+            echo "input_tokens=" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_write_tokens=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Track agent run cost
+        if: steps.gate.outputs.proceed == 'true' && steps.conclusion.outputs.status != 'skip'
+        uses: foo-software/agentmeter-action@main
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: claude
+          model: ${{ vars.GH_AW_MODEL_AGENT_CLAUDE }}
+          status: ${{ steps.conclusion.outputs.status }}
+          started_at: ${{ github.event.workflow_run.run_started_at }}
+          completed_at: ${{ github.event.workflow_run.updated_at }}
+          trigger_number: ${{ steps.trigger.outputs.number }}
+          trigger_event: ${{ steps.trigger.outputs.event_name }}
+          post_comment: ${{ steps.trigger.outputs.number != '' }}
+          input_tokens: ${{ steps.tokens.outputs.input_tokens }}
+          output_tokens: ${{ steps.tokens.outputs.output_tokens }}
+          cache_read_tokens: ${{ steps.tokens.outputs.cache_read_tokens }}
+          cache_write_tokens: ${{ steps.tokens.outputs.cache_write_tokens }}
