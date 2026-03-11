@@ -136,6 +136,7 @@ export async function run(): Promise<void> {
           tokens,
           model: inputs.model,
           turns: inputs.turns,
+          durationSeconds,
           dashboardUrl: result.dashboardUrl,
         },
       });

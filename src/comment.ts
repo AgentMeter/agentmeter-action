@@ -15,6 +15,84 @@ const STATUS_EMOJI: Record<string, string> = {
 };
 
 /**
+ * Per-token pricing in USD per 1M tokens, keyed by model prefix.
+ * Prices are approximate and may lag model releases.
+ */
+const MODEL_PRICING: Array<{
+  /** Model name prefix to match against */
+  prefix: string;
+  /** USD per 1M input tokens */
+  inputPer1M: number;
+  /** USD per 1M output tokens */
+  outputPer1M: number;
+  /** USD per 1M cache write tokens */
+  cacheWritePer1M: number;
+  /** USD per 1M cache read tokens */
+  cacheReadPer1M: number;
+}> = [
+  {
+    prefix: 'claude-opus-4',
+    inputPer1M: 15,
+    outputPer1M: 75,
+    cacheWritePer1M: 18.75,
+    cacheReadPer1M: 1.5,
+  },
+  {
+    prefix: 'claude-sonnet-4',
+    inputPer1M: 3,
+    outputPer1M: 15,
+    cacheWritePer1M: 3.75,
+    cacheReadPer1M: 0.3,
+  },
+  {
+    prefix: 'claude-haiku-4',
+    inputPer1M: 0.8,
+    outputPer1M: 4,
+    cacheWritePer1M: 1,
+    cacheReadPer1M: 0.08,
+  },
+  {
+    prefix: 'claude-opus-3',
+    inputPer1M: 15,
+    outputPer1M: 75,
+    cacheWritePer1M: 18.75,
+    cacheReadPer1M: 1.5,
+  },
+  {
+    prefix: 'claude-sonnet-3',
+    inputPer1M: 3,
+    outputPer1M: 15,
+    cacheWritePer1M: 3.75,
+    cacheReadPer1M: 0.3,
+  },
+  {
+    prefix: 'claude-haiku-3',
+    inputPer1M: 0.25,
+    outputPer1M: 1.25,
+    cacheWritePer1M: 0.3,
+    cacheReadPer1M: 0.03,
+  },
+];
+
+/**
+ * Looks up per-token pricing for a model name. Returns null if unknown.
+ */
+function getPricing(model: string | null): (typeof MODEL_PRICING)[0] | null {
+  if (!model) return null;
+  const lower = model.toLowerCase();
+  return MODEL_PRICING.find((p) => lower.startsWith(p.prefix)) ?? null;
+}
+
+/**
+ * Formats a token cost in USD (e.g. 0.004521 → "$0.0045").
+ */
+function formatTokenCost(usd: number): string {
+  if (usd === 0) return '$0.00';
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+/**
  * Formats cents to a USD dollar string (e.g. 452 → "$4.52").
  */
 function formatCost(cents: number): string {
@@ -53,13 +131,10 @@ export function buildCommentBody({
   const existingRuns = existingBody ? parseExistingRuns(existingBody) : [];
   const allRuns = [...existingRuns, runData];
 
-  const statusIcon = STATUS_EMOJI[runData.status] ?? '❓';
-  void statusIcon;
-
   const tableRows = allRuns
     .map((run, i) => {
       const icon = STATUS_EMOJI[run.status] ?? '❓';
-      return `| ${i + 1} | ${run.workflowName} | ${icon} | ${formatCost(run.totalCostCents)} | ${formatDuration(undefined)} |`;
+      return `| ${i + 1} | ${run.workflowName} | ${icon} | ${formatCost(run.totalCostCents)} | ${formatDuration(run.durationSeconds)} |`;
     })
     .join('\n');
 
@@ -98,11 +173,17 @@ function buildTokenDetails(run: RunCommentData): string | null {
       ? Math.round((tokens.cacheReadTokens / (tokens.cacheReadTokens + tokens.inputTokens)) * 100)
       : 0;
 
+  const pricing = getPricing(model);
+  const perM = (tokens: number, pricePerM: number | undefined): string => {
+    if (!pricing || pricePerM == null) return '—';
+    return formatTokenCost((tokens / 1_000_000) * pricePerM);
+  };
+
   const rows = [
-    `| Input | ${formatNumber(tokens.inputTokens)} | — |`,
-    `| Output | ${formatNumber(tokens.outputTokens)} | — |`,
-    `| Cache writes | ${formatNumber(tokens.cacheWriteTokens)} | — |`,
-    `| Cache reads | ${formatNumber(tokens.cacheReadTokens)} | — |`,
+    `| Input | ${formatNumber(tokens.inputTokens)} | ${perM(tokens.inputTokens, pricing?.inputPer1M)} |`,
+    `| Output | ${formatNumber(tokens.outputTokens)} | ${perM(tokens.outputTokens, pricing?.outputPer1M)} |`,
+    `| Cache writes | ${formatNumber(tokens.cacheWriteTokens)} | ${perM(tokens.cacheWriteTokens, pricing?.cacheWritePer1M)} |`,
+    `| Cache reads | ${formatNumber(tokens.cacheReadTokens)} | ${perM(tokens.cacheReadTokens, pricing?.cacheReadPer1M)} |`,
   ].join('\n');
 
   const meta = [
@@ -132,6 +213,7 @@ interface ParsedRun {
   workflowName: string;
   status: string;
   totalCostCents: number;
+  durationSeconds: number | null;
   dashboardUrl: string;
   tokens?: TokenCountsWithMeta;
   model: string | null;
@@ -172,6 +254,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
           workflowName,
           status,
           totalCostCents: Number.isNaN(totalCostCents) ? 0 : totalCostCents,
+          durationSeconds: null,
           dashboardUrl: '',
           model: null,
           turns: null,

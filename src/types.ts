@@ -134,6 +134,8 @@ export interface RunCommentData {
   model: string | null;
   /** Number of agent turns */
   turns: number | null;
+  /** Run duration in seconds */
+  durationSeconds: number | null;
   /** Link to the run in the dashboard */
   dashboardUrl: string;
 }
