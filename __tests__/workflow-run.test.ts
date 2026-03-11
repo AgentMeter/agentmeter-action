@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { zipSync } from 'fflate';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveWorkflowRun } from '../src/workflow-run';
 
@@ -46,10 +47,11 @@ function makeOctokit({
   };
 }
 
-/** Creates a minimal zip-like buffer containing the JSON payload */
+/** Creates a real zip buffer containing agent-tokens.json with the given JSON content */
 function makeTokenZip(json: string): ArrayBuffer {
   const encoder = new TextEncoder();
-  return encoder.encode(json).buffer as ArrayBuffer;
+  const zipped = zipSync({ 'agent-tokens.json': encoder.encode(json) });
+  return zipped.buffer as ArrayBuffer;
 }
 
 const baseArgs = {

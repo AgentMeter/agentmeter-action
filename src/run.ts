@@ -26,7 +26,7 @@ export async function run(): Promise<void> {
   let inputs = parseInputs();
   const ctx = extractContext();
 
-  const githubToken = process.env['GITHUB_TOKEN'] ?? '';
+  const githubToken = core.getInput('github_token') || process.env['GITHUB_TOKEN'] || '';
 
   // When workflow_run_id is provided, resolve all workflow-run data automatically:
   // timestamps, trigger number, and agent-tokens artifact. This removes the need
@@ -93,7 +93,7 @@ export async function run(): Promise<void> {
     apiKey: inputs.apiKey,
     apiUrl: inputs.apiUrl,
     payload: {
-      githubRunId: ctx.runId,
+      githubRunId: inputs.workflowRunId ?? ctx.runId,
       repoFullName: ctx.repoFullName,
       workflowName: resolvedWorkflowName,
       triggerType: resolvedTriggerEvent,

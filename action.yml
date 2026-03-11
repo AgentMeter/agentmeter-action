@@ -9,6 +9,10 @@ inputs:
   api_key:
     description: 'Your AgentMeter API key (from agentmeter.app/dashboard/settings/general)'
     required: true
+  github_token:
+    description: 'GitHub token for API access (comment posting, artifact download, job listing). Defaults to the built-in GITHUB_TOKEN.'
+    required: false
+    default: ${{ github.token }}
   model:
     description: 'The AI model used (e.g. claude-sonnet-4-5, claude-opus-4-6)'
     required: false
@@ -87,5 +91,5 @@ outputs:
     description: 'Link to the run detail page in AgentMeter dashboard'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'

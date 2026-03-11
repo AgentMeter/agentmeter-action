@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { unzipSync } from 'fflate';
 import type { AgentTokensArtifact, TokenCountsWithMeta } from './types';
 
 /**
@@ -306,32 +307,21 @@ async function fetchAgentTokens({
 }
 
 /**
- * Extracts and parses agent-tokens.json from a zip ArrayBuffer.
- * Uses the JSZip-free approach: the artifact zip for a single JSON file
- * is small enough to locate the JSON by scanning for the file signature.
+ * Extracts and parses agent-tokens.json from a zip ArrayBuffer using fflate.
  */
 async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArtifact | null> {
   try {
-    // GitHub artifact zips contain the file content after the local file header.
-    // We locate the JSON by searching for the opening brace after the filename.
-    const bytes = new Uint8Array(zipData);
-    const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-
-    // Find agent-tokens.json content: look for {"input_tokens": pattern
-    const jsonMatch = text.match(/\{"input_tokens"[\s\S]*?\}/);
-    if (!jsonMatch) {
-      core.warning('AgentMeter: could not locate JSON in agent-tokens artifact zip.');
+    const unzipped = unzipSync(new Uint8Array(zipData));
+    const file = unzipped['agent-tokens.json'];
+    if (!file) {
+      core.warning('AgentMeter: agent-tokens.json not found inside artifact zip.');
       return null;
     }
-
-    const parsed = JSON.parse(jsonMatch[0]) as AgentTokensArtifact;
-
-    // Validate it has the expected shape
+    const parsed = JSON.parse(new TextDecoder().decode(file)) as AgentTokensArtifact;
     if (typeof parsed.input_tokens !== 'number') {
       core.warning('AgentMeter: agent-tokens artifact has unexpected structure.');
       return null;
     }
-
     return parsed;
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);
