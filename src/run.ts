@@ -5,6 +5,7 @@ import { extractContext } from './context';
 import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
 import { resolveTokens } from './token-extractor';
+import { resolveWorkflowRun } from './workflow-run';
 
 /**
  * Builds a human-readable trigger ref string from a number and event name.
@@ -25,30 +26,56 @@ export async function run(): Promise<void> {
   const inputs = parseInputs();
   const ctx = extractContext();
 
-  // When running via workflow_run, GitHub context won't carry the original
-  // issue/PR number. Use explicit trigger_number + trigger_event inputs instead.
-  const triggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
-  const triggerEvent = inputs.triggerEvent || ctx.triggerType;
+  const githubToken = process.env['GITHUB_TOKEN'] ?? '';
+
+  // When workflow_run_id is provided, resolve all workflow-run data automatically:
+  // timestamps, trigger number, and agent-tokens artifact. This removes the need
+  // for manual pre-steps in the caller's companion workflow.
+  let workflowRunTokens: ReturnType<typeof resolveTokens>;
+  let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
+  let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
+  let resolvedStartedAt = inputs.startedAt || selfStartedAt;
+  let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
+
+  if (inputs.workflowRunId !== null) {
+    if (!githubToken) {
+      core.warning(
+        'AgentMeter: workflow_run_id provided but GITHUB_TOKEN not set — skipping auto-resolution.'
+      );
+    } else {
+      const runData = await resolveWorkflowRun({
+        githubToken,
+        owner: ctx.owner,
+        repo: ctx.repo,
+        workflowRunId: inputs.workflowRunId,
+      });
+
+      // Only override with resolved values when explicit inputs aren't set
+      if (!inputs.startedAt) resolvedStartedAt = runData.startedAt;
+      if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
+      if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
+      if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
+      workflowRunTokens = runData.tokens;
+    }
+  }
+
+  // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction
+  const tokens =
+    resolveTokens({
+      agentOutput: inputs.agentOutput,
+      inputTokensOverride: inputs.inputTokens,
+      outputTokensOverride: inputs.outputTokens,
+      cacheReadTokensOverride: inputs.cacheReadTokens,
+      cacheWriteTokensOverride: inputs.cacheWriteTokens,
+    }) ?? workflowRunTokens;
+
   const triggerRef =
-    inputs.triggerNumber !== null
-      ? buildTriggerRef(inputs.triggerNumber, inputs.triggerEvent)
+    resolvedTriggerNumber !== null
+      ? buildTriggerRef(resolvedTriggerNumber, resolvedTriggerEvent)
       : ctx.triggerRef;
 
-  const tokens = resolveTokens({
-    agentOutput: inputs.agentOutput,
-    inputTokensOverride: inputs.inputTokens,
-    outputTokensOverride: inputs.outputTokens,
-    cacheReadTokensOverride: inputs.cacheReadTokens,
-    cacheWriteTokensOverride: inputs.cacheWriteTokens,
-  });
-
-  // Prefer caller-supplied timestamps (workflow_run callers pass the real agent
-  // run_started_at / updated_at). Fall back to self-measured times, which are
-  // nearly identical and will produce durationSeconds ≈ 0.
-  const startedAt = inputs.startedAt || selfStartedAt;
-  const completedAt = inputs.completedAt || new Date().toISOString();
   const durationSeconds = Math.round(
-    (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000
+    (new Date(resolvedCompletedAt).getTime() - new Date(resolvedStartedAt).getTime()) / 1000
   );
 
   const result = await submitRun({
@@ -58,17 +85,17 @@ export async function run(): Promise<void> {
       githubRunId: ctx.runId,
       repoFullName: ctx.repoFullName,
       workflowName: ctx.workflowName,
-      triggerType: triggerEvent,
+      triggerType: resolvedTriggerEvent,
       triggerRef,
-      triggerNumber,
+      triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
       model: inputs.model,
       status: inputs.status,
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: inputs.turns,
-      startedAt,
-      completedAt,
+      startedAt: resolvedStartedAt,
+      completedAt: resolvedCompletedAt,
       tokens,
     },
   });
@@ -78,8 +105,7 @@ export async function run(): Promise<void> {
     core.setOutput('total_cost_usd', (result.totalCostCents / 100).toFixed(2));
     core.setOutput('dashboard_url', result.dashboardUrl);
 
-    if (inputs.postComment && triggerNumber !== null) {
-      const githubToken = process.env['GITHUB_TOKEN'] ?? '';
+    if (inputs.postComment && resolvedTriggerNumber !== null) {
       if (!githubToken) {
         core.warning('AgentMeter: GITHUB_TOKEN not set, skipping comment posting.');
         return;
@@ -89,7 +115,7 @@ export async function run(): Promise<void> {
         octokit,
         owner: ctx.owner,
         repo: ctx.repo,
-        issueOrPrNumber: triggerNumber,
+        issueOrPrNumber: resolvedTriggerNumber,
         runData: {
           workflowName: ctx.workflowName,
           status: inputs.status,

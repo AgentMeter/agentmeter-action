@@ -52,6 +52,8 @@ export interface ActionInputs {
   startedAt: string;
   /** ISO 8601 completed timestamp override (for workflow_run callers) */
   completedAt: string;
+  /** Run ID of the triggering agent workflow — enables automatic token/trigger/timestamp resolution */
+  workflowRunId: number | null;
 }
 
 /** Extracted GitHub Actions context */
@@ -134,6 +136,18 @@ export interface RunCommentData {
   turns: number | null;
   /** Link to the run in the dashboard */
   dashboardUrl: string;
+}
+
+/** Token data written to agent-tokens.json artifact by gh-aw compiled workflows */
+export interface AgentTokensArtifact {
+  /** Input tokens used */
+  input_tokens: number;
+  /** Output tokens used */
+  output_tokens: number;
+  /** Cache read tokens */
+  cache_read_tokens: number;
+  /** Cache write tokens */
+  cache_write_tokens: number;
 }
 
 /** Known Claude Code JSON output structure (best-effort) */

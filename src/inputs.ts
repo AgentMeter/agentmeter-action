@@ -23,6 +23,7 @@ export function parseInputs(): ActionInputs {
   const triggerEvent = core.getInput('trigger_event');
   const startedAt = core.getInput('started_at');
   const completedAt = core.getInput('completed_at');
+  const workflowRunIdRaw = core.getInput('workflow_run_id');
 
   return {
     apiKey,
@@ -42,6 +43,7 @@ export function parseInputs(): ActionInputs {
     triggerEvent,
     startedAt,
     completedAt,
+    workflowRunId: parseIntOrNull(workflowRunIdRaw),
   };
 }
 
