@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Simulate agent run duration
+        run: sleep 10
+
       - name: Run AgentMeter action (inline mode)
         uses: ./
         with:

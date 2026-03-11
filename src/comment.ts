@@ -208,7 +208,17 @@ function buildTokenDetails(run: RunCommentData): string | null {
   ].join('\n');
 }
 
-/** Minimal shape of a parsed run row from an existing comment */
+/**
+ * Parses a duration string back to seconds (e.g. "4m" → 240, "0s" → 0, "—" → null).
+ */
+function parseDuration(str: string): number | null {
+  if (!str || str === '—') return null;
+  const mMatch = str.match(/(\d+)m(?:\s+(\d+)s)?/);
+  if (mMatch) return parseInt(mMatch[1], 10) * 60 + parseInt(mMatch[2] ?? '0', 10);
+  const sMatch = str.match(/(\d+)s/);
+  if (sMatch) return parseInt(sMatch[1], 10);
+  return null;
+}
 interface ParsedRun {
   workflowName: string;
   status: string;
@@ -246,6 +256,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
         const statusEmoji = cells[2] ?? '';
         const costStr = (cells[3] ?? '').replace(/[$*]/g, '');
         const totalCostCents = Math.round(parseFloat(costStr) * 100);
+        const durationSeconds = parseDuration(cells[4] ?? '');
 
         const status =
           Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
@@ -254,7 +265,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
           workflowName,
           status,
           totalCostCents: Number.isNaN(totalCostCents) ? 0 : totalCostCents,
-          durationSeconds: null,
+          durationSeconds,
           dashboardUrl: '',
           model: null,
           turns: null,
