@@ -213,6 +213,32 @@ Place `if: always()` on the AgentMeter step so it runs even when the agent step 
 
 ---
 
+## Data collection and privacy
+
+AgentMeter collects only the following data from each agent run:
+
+| Field | Example |
+|---|---|
+| Token counts (input, output, cache read/write) | `1024`, `312`, `0`, `0` |
+| Run duration | `183` seconds |
+| Model name | `claude-haiku-4-5` |
+| Workflow name | `Agent: Implement Issue` |
+| GitHub run ID | `22867758493` |
+| Repository name | `my-org/my-repo` |
+| PR or issue number | `42` |
+| Run status | `success` |
+
+AgentMeter does **not** collect or transmit:
+
+- Agent conversation content (prompts, responses, reasoning)
+- Code diffs or file contents
+- Repository secrets or environment variables
+- Any data beyond what is listed above
+
+For gh-aw integrations using `workflow_run_id`: the action downloads a small JSON artifact (`agent-tokens.json`) containing only the four integer token counts. The full agent log never leaves the runner.
+
+---
+
 ## Development
 
 See [docs/testing.md](docs/testing.md) for instructions on how to test this action locally.
