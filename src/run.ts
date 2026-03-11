@@ -23,7 +23,7 @@ function buildTriggerRef(number: number, eventName: string): string {
 export async function run(): Promise<void> {
   const selfStartedAt = new Date().toISOString();
 
-  const inputs = parseInputs();
+  let inputs = parseInputs();
   const ctx = extractContext();
 
   const githubToken = process.env['GITHUB_TOKEN'] ?? '';
@@ -46,9 +46,18 @@ export async function run(): Promise<void> {
       const runData = await resolveWorkflowRun({
         githubToken,
         owner: ctx.owner,
+        rawConclusion: inputs.status,
         repo: ctx.repo,
         workflowRunId: inputs.workflowRunId,
       });
+
+      if (!runData.shouldProceed) {
+        core.info('AgentMeter: skipping ingest for this workflow_run firing.');
+        return;
+      }
+
+      // Use normalized status from the run data
+      inputs = { ...inputs, status: runData.normalizedStatus };
 
       // Only override with resolved values when explicit inputs aren't set
       if (!inputs.startedAt) resolvedStartedAt = runData.startedAt;

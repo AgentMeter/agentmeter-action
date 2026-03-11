@@ -11,56 +11,18 @@ jobs:
   track:
     runs-on: ubuntu-latest
     permissions:
-      actions: read
+      actions: read      # required to list jobs and download artifacts
       contents: read
-      issues: write
+      issues: write      # required to post cost comments
       pull-requests: write
     steps:
-      # gh-aw workflows have multiple jobs (pre_activation, activation, agent,
-      # safe_outputs, conclusion). workflow_run fires for each completed job.
-      # Only proceed when the terminal "conclusion" job has completed so we
-      # track exactly one record per agent run.
-      - name: Check if conclusion job completed
-        id: gate
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runId = context.payload.workflow_run.id;
-            const { data } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: runId,
-            });
-            const conclusionJob = data.jobs.find(j => j.name === 'conclusion');
-            if (!conclusionJob || conclusionJob.status !== 'completed') {
-              console.log('conclusion job not yet completed — skipping');
-              core.setOutput('proceed', 'false');
-            } else {
-              console.log(`conclusion job completed with: ${conclusionJob.conclusion}`);
-              core.setOutput('proceed', 'true');
-            }
-
-      - name: Normalize conclusion
-        id: conclusion
-        if: steps.gate.outputs.proceed == 'true'
-        run: |
-          case "${{ github.event.workflow_run.conclusion }}" in
-            success)   echo "status=success"   >> "$GITHUB_OUTPUT" ;;
-            failure)   echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
-            timed_out) echo "status=timed_out" >> "$GITHUB_OUTPUT" ;;
-            cancelled) echo "status=cancelled" >> "$GITHUB_OUTPUT" ;;
-            skipped)   echo "status=skip"      >> "$GITHUB_OUTPUT" ;;
-            *)         echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
-          esac
-
       - name: Track agent run cost
-        if: steps.gate.outputs.proceed == 'true' && steps.conclusion.outputs.status != 'skip'
         uses: foo-software/agentmeter-action@main
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
           engine: claude
           model: ${{ vars.GH_AW_MODEL_AGENT_CLAUDE }}
-          status: ${{ steps.conclusion.outputs.status }}
+          status: ${{ github.event.workflow_run.conclusion }}
           workflow_run_id: ${{ github.event.workflow_run.id }}
           post_comment: 'true'

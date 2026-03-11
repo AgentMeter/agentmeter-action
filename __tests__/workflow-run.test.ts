@@ -12,10 +12,12 @@ function makeOctokit({
   runData = {},
   artifacts = [],
   artifactZip = null,
+  jobs = [{ name: 'conclusion', status: 'completed', conclusion: 'success' }],
 }: {
   runData?: Record<string, unknown>;
   artifacts?: Array<{ name: string; id: number }>;
   artifactZip?: ArrayBuffer | null;
+  jobs?: Array<{ name: string; status: string; conclusion?: string }>;
 }) {
   const defaultRun = {
     run_started_at: '2026-03-09T10:00:00Z',
@@ -36,6 +38,7 @@ function makeOctokit({
     rest: {
       actions: {
         getWorkflowRun: vi.fn().mockResolvedValue({ data: defaultRun }),
+        listJobsForWorkflowRun: vi.fn().mockResolvedValue({ data: { jobs } }),
         listWorkflowRunArtifacts: vi.fn().mockResolvedValue({ data: { artifacts } }),
         downloadArtifact: vi.fn().mockResolvedValue({ data: artifactZip }),
       },
@@ -49,36 +52,86 @@ function makeTokenZip(json: string): ArrayBuffer {
   return encoder.encode(json).buffer as ArrayBuffer;
 }
 
+const baseArgs = {
+  githubToken: 'token',
+  owner: 'adam',
+  rawConclusion: 'success',
+  repo: 'repo',
+  workflowRunId: 123,
+};
+
 describe('resolveWorkflowRun', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it('resolves timestamps from the workflow run', async () => {
+  it('proceeds and resolves timestamps when conclusion job is completed', async () => {
     const octokit = makeOctokit({});
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
+    expect(result.shouldProceed).toBe(true);
     expect(result.startedAt).toBe('2026-03-09T10:00:00Z');
     expect(result.completedAt).toBe('2026-03-09T10:05:00Z');
+  });
+
+  it('skips when conclusion job is not yet completed', async () => {
+    const octokit = makeOctokit({
+      jobs: [{ name: 'conclusion', status: 'in_progress' }],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.shouldProceed).toBe(false);
+  });
+
+  it('skips when no conclusion job exists', async () => {
+    const octokit = makeOctokit({
+      jobs: [{ name: 'agent', status: 'completed' }],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.shouldProceed).toBe(false);
+  });
+
+  it('skips immediately for skipped conclusion without API calls', async () => {
+    const octokit = makeOctokit({});
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun({ ...baseArgs, rawConclusion: 'skipped' });
+
+    expect(result.shouldProceed).toBe(false);
+    expect(result.normalizedStatus).toBe('skip');
+    expect(octokit.rest.actions.listJobsForWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it('normalizes failure → failed', async () => {
+    const octokit = makeOctokit({});
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun({ ...baseArgs, rawConclusion: 'failure' });
+
+    expect(result.normalizedStatus).toBe('failed');
+  });
+
+  it('normalizes success → success', async () => {
+    const octokit = makeOctokit({});
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.normalizedStatus).toBe('success');
   });
 
   it('resolves trigger number from pull_requests array', async () => {
     const octokit = makeOctokit({});
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.triggerNumber).toBe(42);
     expect(result.triggerEvent).toBe('pull_request');
@@ -95,12 +148,7 @@ describe('resolveWorkflowRun', () => {
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.triggerNumber).toBe(99);
     expect(result.triggerEvent).toBe('issues');
@@ -117,12 +165,7 @@ describe('resolveWorkflowRun', () => {
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.triggerNumber).toBeNull();
     expect(result.triggerEvent).toBe('');
@@ -132,12 +175,7 @@ describe('resolveWorkflowRun', () => {
     const octokit = makeOctokit({ artifacts: [] });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.tokens).toBeUndefined();
   });
@@ -153,12 +191,7 @@ describe('resolveWorkflowRun', () => {
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.tokens).toEqual({
       inputTokens: 1000,
@@ -169,17 +202,27 @@ describe('resolveWorkflowRun', () => {
     });
   });
 
+  it('proceeds when listJobsForWorkflowRun fails (non-gh-aw workflow)', async () => {
+    const octokit = makeOctokit({});
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockRejectedValue(new Error('403 forbidden'));
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.shouldProceed).toBe(true);
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('could not check conclusion job status')
+    );
+  });
+
   it('warns and returns partial data when workflow run API fails', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.getWorkflowRun = vi.fn().mockRejectedValue(new Error('API error'));
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('failed to fetch workflow run')
@@ -195,12 +238,7 @@ describe('resolveWorkflowRun', () => {
     octokit.rest.actions.downloadArtifact = vi.fn().mockRejectedValue(new Error('download error'));
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun({
-      githubToken: 'token',
-      owner: 'adam',
-      repo: 'repo',
-      workflowRunId: 123,
-    });
+    const result = await resolveWorkflowRun(baseArgs);
 
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('failed to fetch agent-tokens artifact')

@@ -1,41 +1,22 @@
 # Known Challenges with `workflow_run` Integration
 
-When using `agentmeter-action` via a `workflow_run` trigger (the required pattern for tracking gh-aw / multi-job agent workflows), several non-obvious problems arise. This document captures each one, the current workaround, and the ideal fix.
+When using `agentmeter-action` via a `workflow_run` trigger (the required pattern for tracking gh-aw / multi-job agent workflows), several non-obvious problems arise. This document captures each one, the current status, and the solution.
 
 ---
 
 ## 1. Multiple firings per agent run
 
-### Status: Workaround in place (user-facing)
+### Status: ✅ Solved — handled automatically inside the action
 
 ### Problem
 
 `workflow_run` fires once **per job completion**, not once per workflow completion. gh-aw workflows have 5 jobs (`pre_activation`, `activation`, `agent`, `safe_outputs`, `conclusion`), so a single agent run produces 4–5 `workflow_run` events — and therefore 4–5 potential ingest calls.
 
-### Workaround
+### Solution
 
-Gate on the terminal job. A `Check if conclusion job completed` step calls the GitHub API before doing anything else. If the `conclusion` job hasn't finished yet, all subsequent steps are skipped. This produces exactly 1 ingest call per agent run.
+When `workflow_run_id` is provided, the action calls `listJobsForWorkflowRun` internally and checks whether the terminal `conclusion` job has completed. If it hasn't, the action exits immediately and skips ingestion. This produces exactly 1 ingest call per agent run.
 
-```yaml
-- name: Check if conclusion job completed
-  id: gate
-  uses: actions/github-script@v7
-  with:
-    script: |
-      const { data } = await github.rest.actions.listJobsForWorkflowRun({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        run_id: context.payload.workflow_run.id,
-      });
-      const conclusionJob = data.jobs.find(j => j.name === 'conclusion');
-      core.setOutput('proceed', conclusionJob?.status === 'completed' ? 'true' : 'false');
-```
-
-This step must remain in the user's companion workflow — it can't be moved into the action itself, because you can't gate a step from inside it. Moving the check inside the action would still burn runner time on 4 no-op runs.
-
-### Better long-term solution
-
-Backend dedup by `(githubRunId, workflowName)` — last-write-wins upsert. This would make the gate step unnecessary and be resilient to edge cases.
+If the API call fails (e.g. a non-gh-aw workflow that has no `conclusion` job), the gate is bypassed and ingestion proceeds — fail-open rather than fail-closed.
 
 ---
 
@@ -60,33 +41,26 @@ No user-facing pre-steps required.
 
 ## 3. `skipped` is not a valid ingest status
 
-### Status: Workaround in place (user-facing)
+### Status: ✅ Solved — handled automatically inside the action
 
 ### Problem
 
 `workflow_run.conclusion` can be `skipped` when jobs have unmet `if:` conditions. The AgentMeter API only accepts `running | success | failed | timed_out | cancelled | needs_human`.
 
-### Workaround
+### Solution
 
-A `Normalize conclusion` step maps GitHub conclusions to valid API statuses and marks `skipped` runs for early exit:
+When `workflow_run_id` is provided, the action normalizes the raw conclusion value internally:
 
-```yaml
-- name: Normalize conclusion
-  id: conclusion
-  run: |
-    case "${{ github.event.workflow_run.conclusion }}" in
-      success)   echo "status=success"   >> "$GITHUB_OUTPUT" ;;
-      failure)   echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
-      timed_out) echo "status=timed_out" >> "$GITHUB_OUTPUT" ;;
-      cancelled) echo "status=cancelled" >> "$GITHUB_OUTPUT" ;;
-      skipped)   echo "status=skip"      >> "$GITHUB_OUTPUT" ;;
-      *)         echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
-    esac
-```
+| GitHub conclusion | AgentMeter status |
+|---|---|
+| `success` | `success` |
+| `failure` | `failed` |
+| `timed_out` | `timed_out` |
+| `cancelled` | `cancelled` |
+| `skipped` | *(skipped — nothing to track)* |
+| anything else | `failed` |
 
-### Better long-term solution
-
-Move this normalization into the action itself so the user only passes `status: ${{ github.event.workflow_run.conclusion }}` and the action handles the mapping internally.
+Users pass `status: ${{ github.event.workflow_run.conclusion }}` raw — no normalization step needed.
 
 ---
 
@@ -126,65 +100,41 @@ When a `workflow_run` workflow is first pushed, GitHub retroactively triggers it
 
 ### Notes
 
-One-time per deploy. The gate step (challenge #1) limits actual ingest calls to runs where the `conclusion` job was the triggering job, so most of the burst is instant no-ops.
+One-time per deploy. The gate (challenge #1) limits actual ingest calls to runs where the `conclusion` job was the triggering job, so most of the burst is instant no-ops.
 
 ---
 
-## User-facing boilerplate summary
+## Minimum companion workflow (gh-aw)
 
-After all the above, the minimum companion `agentmeter.yml` for a gh-aw repo is:
+With all challenges solved inside the action, the full companion `agentmeter.yml` is:
 
 ```yaml
+name: AgentMeter — Track Agent Costs
+
 on:
   workflow_run:
-    workflows: ["Agent: My Workflow"]
-    types: [completed]
+    workflows:
+      - "Agent: My Workflow"
+    types:
+      - completed
 
 jobs:
   track:
     runs-on: ubuntu-latest
     permissions:
-      actions: read
-      issues: write
+      actions: read        # required — lets the action gate on the conclusion job
+      contents: read
+      issues: write        # required — lets the action post cost comments
       pull-requests: write
     steps:
-      - name: Check if conclusion job completed  # Challenge #1 workaround
-        id: gate
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner, repo: context.repo.repo,
-              run_id: context.payload.workflow_run.id,
-            });
-            const job = data.jobs.find(j => j.name === 'conclusion');
-            core.setOutput('proceed', job?.status === 'completed' ? 'true' : 'false');
-
-      - name: Normalize conclusion  # Challenge #3 workaround
-        id: conclusion
-        if: steps.gate.outputs.proceed == 'true'
-        run: |
-          case "${{ github.event.workflow_run.conclusion }}" in
-            success)   echo "status=success"   >> "$GITHUB_OUTPUT" ;;
-            failure)   echo "status=failed"    >> "$GITHUB_OUTPUT" ;;
-            timed_out) echo "status=timed_out" >> "$GITHUB_OUTPUT" ;;
-            cancelled) echo "status=cancelled" >> "$GITHUB_OUTPUT" ;;
-            *)         echo "status=skip"      >> "$GITHUB_OUTPUT" ;;
-          esac
-
-      - name: Track agent run cost
-        if: steps.gate.outputs.proceed == 'true' && steps.conclusion.outputs.status != 'skip'
-        uses: foo-software/agentmeter-action@main
+      - uses: foo-software/agentmeter-action@main
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           engine: claude
           model: ${{ vars.GH_AW_MODEL_AGENT_CLAUDE }}
-          status: ${{ steps.conclusion.outputs.status }}
-          workflow_run_id: ${{ github.event.workflow_run.id }}  # Handles everything else
-          post_comment: 'true'
+          status: ${{ github.event.workflow_run.conclusion }}
+          workflow_run_id: ${{ github.event.workflow_run.id }}
 ```
-
-Challenges #2 (trigger number) and #4 (tokens) are fully handled by `workflow_run_id`. Challenges #1 and #3 still require the two pre-steps above.
 
 ---
 
@@ -192,11 +142,11 @@ Challenges #2 (trigger number) and #4 (tokens) are fully handled by `workflow_ru
 
 | Challenge | Status | Notes |
 |---|---|---|
-| 4–5 ingests per agent run | Workaround (user-facing) | Gate step required; ideal fix is backend dedup |
-| Missing trigger number | ✅ Solved | Handled by `workflow_run_id` input |
-| `skipped` status 422 | Workaround (user-facing) | Normalize step required; could be moved into action |
-| First-deploy backfill burst | Accepted | One-time, gate makes it cheap |
-| Token data unavailable | ✅ Solved for gh-aw | `workflow_run_id` fetches artifact; other engines use explicit inputs |
+| 4–5 ingests per agent run | ✅ Solved | Action gates on `conclusion` job via `workflow_run_id` |
+| Missing trigger number | ✅ Solved | Action resolves from run API via `workflow_run_id` |
+| `skipped` status 422 | ✅ Solved | Action normalizes conclusion internally via `workflow_run_id` |
+| First-deploy backfill burst | Accepted | One-time; gate makes it cheap |
+| Token data unavailable | ✅ Solved for gh-aw | Action fetches `agent-tokens` artifact via `workflow_run_id` |
 
 ---
 

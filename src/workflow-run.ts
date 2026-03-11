@@ -16,17 +16,27 @@ export interface WorkflowRunData {
   triggerEvent: string;
   /** Token counts extracted from the agent-tokens artifact, if available */
   tokens: TokenCountsWithMeta | undefined;
+  /**
+   * Whether the action should proceed with ingesting this run.
+   * False when the triggering workflow's terminal job hasn't completed yet
+   * (gh-aw fires workflow_run for each of its 5 jobs — we only want the last).
+   * Also false when the run was skipped (nothing to track).
+   */
+  shouldProceed: boolean;
+  /** Normalized status string valid for the AgentMeter API */
+  normalizedStatus: string;
 }
 
 /**
  * Fetches metadata and token data from the triggering agent workflow run.
- * Uses the GitHub API to read run timestamps, associated PRs, and the
- * agent-tokens artifact — so callers don't need manual pre-steps for any of
- * these. Never throws; logs warnings and returns partial data on failure.
+ * Also checks whether the terminal job has completed (gate logic) and
+ * normalizes the workflow conclusion to a valid API status value.
+ * Never throws — logs warnings and returns partial data on failure.
  */
 export async function resolveWorkflowRun({
   githubToken,
   owner,
+  rawConclusion,
   repo,
   workflowRunId,
 }: {
@@ -34,12 +44,35 @@ export async function resolveWorkflowRun({
   githubToken: string;
   /** Repository owner */
   owner: string;
+  /** Raw workflow_run conclusion from the GitHub event payload */
+  rawConclusion: string;
   /** Repository name */
   repo: string;
   /** Run ID of the triggering agent workflow */
   workflowRunId: number;
 }): Promise<WorkflowRunData> {
   const octokit = github.getOctokit(githubToken);
+
+  const normalizedStatus = normalizeConclusion(rawConclusion);
+
+  // Skipped runs have nothing to track — bail immediately without API calls
+  if (normalizedStatus === 'skip') {
+    core.info('AgentMeter: triggering workflow was skipped — nothing to track.');
+    return emptyResult({ shouldProceed: false, normalizedStatus });
+  }
+
+  // Gate: gh-aw fires workflow_run for each of its ~5 jobs. Only proceed when
+  // the terminal "conclusion" job has completed, so we track exactly one record.
+  const shouldProceed = await checkConclusionJobCompleted({
+    octokit,
+    owner,
+    repo,
+    workflowRunId,
+  });
+
+  if (!shouldProceed) {
+    return emptyResult({ shouldProceed: false, normalizedStatus });
+  }
 
   const run = await fetchRun({ octokit, owner, repo, workflowRunId });
 
@@ -53,7 +86,87 @@ export async function resolveWorkflowRun({
 
   const tokens = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
 
-  return { startedAt, completedAt, triggerNumber, triggerEvent, tokens };
+  return { startedAt, completedAt, triggerNumber, triggerEvent, tokens, shouldProceed: true, normalizedStatus };
+}
+
+/**
+ * Maps a raw workflow_run conclusion to a valid AgentMeter API status value.
+ * Returns 'skip' for conclusions that should not be tracked.
+ */
+function normalizeConclusion(conclusion: string): string {
+  const map: Record<string, string> = {
+    success: 'success',
+    failure: 'failed',
+    timed_out: 'timed_out',
+    cancelled: 'cancelled',
+    skipped: 'skip',
+  };
+  return map[conclusion] ?? 'failed';
+}
+
+/**
+ * Returns a default WorkflowRunData with shouldProceed=false.
+ */
+function emptyResult({
+  normalizedStatus,
+  shouldProceed,
+}: {
+  /** Normalized status */
+  normalizedStatus: string;
+  /** Whether to proceed */
+  shouldProceed: boolean;
+}): WorkflowRunData {
+  const now = new Date().toISOString();
+  return {
+    startedAt: now,
+    completedAt: now,
+    triggerNumber: null,
+    triggerEvent: '',
+    tokens: undefined,
+    shouldProceed,
+    normalizedStatus,
+  };
+}
+
+/**
+ * Checks whether the terminal "conclusion" job in a gh-aw workflow run has
+ * completed. workflow_run fires for each job completion (~5 times per run),
+ * so we use this to ensure we only ingest once per agent run.
+ */
+async function checkConclusionJobCompleted({
+  octokit,
+  owner,
+  repo,
+  workflowRunId,
+}: {
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
+  /** Workflow run ID */
+  workflowRunId: number;
+}): Promise<boolean> {
+  try {
+    const { data } = await octokit.rest.actions.listJobsForWorkflowRun({
+      owner,
+      repo,
+      run_id: workflowRunId,
+    });
+    const conclusionJob = data.jobs.find((j) => j.name === 'conclusion');
+    if (!conclusionJob || conclusionJob.status !== 'completed') {
+      core.info('AgentMeter: conclusion job not yet completed — skipping this firing.');
+      return false;
+    }
+    core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
+    return true;
+  } catch (error) {
+    // If the API call fails (e.g. non-gh-aw workflow with no conclusion job),
+    // proceed anyway — the gate is a best-effort dedup, not a hard requirement.
+    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Proceeding.`);
+    return true;
+  }
 }
 
 /**
