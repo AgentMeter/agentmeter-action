@@ -25,6 +25,8 @@ export interface WorkflowRunData {
   shouldProceed: boolean;
   /** Normalized status string valid for the AgentMeter API */
   normalizedStatus: string;
+  /** Name of the triggering agent workflow (not the companion tracking workflow) */
+  workflowName: string;
 }
 
 /**
@@ -86,7 +88,7 @@ export async function resolveWorkflowRun({
 
   const tokens = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
 
-  return { startedAt, completedAt, triggerNumber, triggerEvent, tokens, shouldProceed: true, normalizedStatus };
+  return { startedAt, completedAt, triggerNumber, triggerEvent, tokens, shouldProceed: true, normalizedStatus, workflowName: run?.name ?? '' };
 }
 
 /**
@@ -125,6 +127,7 @@ function emptyResult({
     tokens: undefined,
     shouldProceed,
     normalizedStatus,
+    workflowName: '',
   };
 }
 
@@ -190,6 +193,7 @@ async function fetchRun({
   run_started_at?: string | null;
   updated_at?: string | null;
   head_branch?: string | null;
+  name?: string | null;
   pull_requests?: Array<{ number: number }>;
 } | null> {
   try {
@@ -202,6 +206,7 @@ async function fetchRun({
       run_started_at: data.run_started_at,
       updated_at: data.updated_at,
       head_branch: data.head_branch,
+      name: data.name,
       pull_requests: (data.pull_requests ?? []).map((pr) => ({ number: pr.number })),
     };
   } catch (error) {

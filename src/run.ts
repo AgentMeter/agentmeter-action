@@ -36,6 +36,7 @@ export async function run(): Promise<void> {
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedStartedAt = inputs.startedAt || selfStartedAt;
   let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
+  let resolvedWorkflowName = ctx.workflowName;
 
   if (inputs.workflowRunId !== null) {
     if (!githubToken) {
@@ -64,6 +65,7 @@ export async function run(): Promise<void> {
       if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
+      if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
     }
   }
@@ -93,7 +95,7 @@ export async function run(): Promise<void> {
     payload: {
       githubRunId: ctx.runId,
       repoFullName: ctx.repoFullName,
-      workflowName: ctx.workflowName,
+      workflowName: resolvedWorkflowName,
       triggerType: resolvedTriggerEvent,
       triggerRef,
       triggerNumber: resolvedTriggerNumber,
@@ -126,7 +128,7 @@ export async function run(): Promise<void> {
         repo: ctx.repo,
         issueOrPrNumber: resolvedTriggerNumber,
         runData: {
-          workflowName: ctx.workflowName,
+          workflowName: resolvedWorkflowName,
           status: inputs.status,
           totalCostCents: result.totalCostCents,
           tokens,
