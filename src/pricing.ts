@@ -101,12 +101,13 @@ const FALLBACK_PRICING: Array<{ prefix: string } & ModelPricing> = [
 
 /**
  * Validates that a value looks like a valid model pricing entry from the API.
+ * cacheReadPerMillionTokens may be null for models that don't support prompt caching.
  */
 function isValidModelEntry(v: unknown): v is {
   inputPerMillionTokens: number;
   outputPerMillionTokens: number;
   cacheWritePerMillionTokens: number;
-  cacheReadPerMillionTokens: number;
+  cacheReadPerMillionTokens: number | null;
 } {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
@@ -114,7 +115,7 @@ function isValidModelEntry(v: unknown): v is {
     typeof o['inputPerMillionTokens'] === 'number' &&
     typeof o['outputPerMillionTokens'] === 'number' &&
     typeof o['cacheWritePerMillionTokens'] === 'number' &&
-    typeof o['cacheReadPerMillionTokens'] === 'number'
+    (typeof o['cacheReadPerMillionTokens'] === 'number' || o['cacheReadPerMillionTokens'] === null)
   );
 }
 
@@ -151,9 +152,10 @@ export async function fetchPricing({
         inputPer1M: entry.inputPerMillionTokens,
         outputPer1M: entry.outputPerMillionTokens,
         cacheWritePer1M: entry.cacheWritePerMillionTokens,
-        cacheReadPer1M: entry.cacheReadPerMillionTokens,
+        cacheReadPer1M: entry.cacheReadPerMillionTokens ?? 0,
       };
     }
+    core.info(`AgentMeter: fetched pricing for ${Object.keys(result).length} models: ${Object.keys(result).join(', ')}`);
     return result;
   } catch (error) {
     core.info(`AgentMeter: could not fetch pricing from API (${error}) — using built-in fallback.`);

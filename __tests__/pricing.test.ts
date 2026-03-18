@@ -18,6 +18,9 @@ const validApiResponse = {
       cacheReadPerMillionTokens: 0.08,
     },
   },
+  sources: [
+    { provider: 'anthropic', url: 'https://www.anthropic.com/pricing' },
+  ],
 };
 
 describe('fetchPricing', () => {
@@ -90,6 +93,27 @@ describe('fetchPricing', () => {
     const result = await fetchPricing({ apiUrl: 'https://example.com' });
     expect(result['claude-sonnet-4-5']).toBeDefined();
     expect(result['Claude-Sonnet-4-5']).toBeUndefined();
+  });
+
+  it('treats null cacheReadPerMillionTokens as 0', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          models: {
+            'gpt-4o': {
+              inputPerMillionTokens: 2.5,
+              outputPerMillionTokens: 10,
+              cacheWritePerMillionTokens: 0,
+              cacheReadPerMillionTokens: null,
+            },
+          },
+        }),
+      })
+    );
+    const result = await fetchPricing({ apiUrl: 'https://example.com' });
+    expect(result['gpt-4o']?.cacheReadPer1M).toBe(0);
   });
 
   it('skips malformed model entries without crashing', async () => {
