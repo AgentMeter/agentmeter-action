@@ -172,6 +172,30 @@ describe('buildCommentBody', () => {
     expect(body).not.toContain('<details>');
   });
 
+  it('correctly parses an existing comment written in the old 5-column format', () => {
+    const oldFormatBody = [
+      '<!-- agentmeter -->',
+      '## ⚡ AgentMeter',
+      '',
+      '| # | Workflow | Status | Cost | Duration |',
+      '|---|----------|--------|------|----------|',
+      '| 1 | AgentMeter — Inline Test | ✅ | $0.01 | 11s |',
+      '',
+      '[View in AgentMeter →](https://agentmeter.app/dashboard/runs/abc)',
+    ].join('\n');
+
+    const updatedBody = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: oldFormatBody,
+      runData: { ...baseRun, workflowName: 'Agent: Code Review', totalCostCents: 3300 },
+    });
+    expect(updatedBody).toContain('AgentMeter — Inline Test');
+    expect(updatedBody).toContain('Agent: Code Review');
+    expect(updatedBody).toContain('**Total**');
+    // Old row should preserve its cost, not show $0.00
+    expect(updatedBody).toContain('$0.01');
+  });
+
   it('appends new run to existing comment and shows total', () => {
     const firstBody = buildCommentBody({
       apiPricing: testPricing,

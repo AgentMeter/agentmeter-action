@@ -196,15 +196,18 @@ function parseExistingRuns(body: string): ParsedRun[] {
           .split('|')
           .map((c) => c.trim())
           .filter(Boolean);
-        if (cells.length < 5) return null;
+        if (cells.length < 4) return null;
 
-        // Columns: # | Workflow | Model | Status | Cost | Duration
+        // Support both old (5-col) and new (6-col) format:
+        // Old: # | Workflow | Status | Cost | Duration
+        // New: # | Workflow | Model  | Status | Cost | Duration
+        const hasModelCol = cells.length >= 6;
         const workflowName = cells[1] ?? '';
-        const model = cells[2] && cells[2] !== '—' ? cells[2] : null;
-        const statusEmoji = cells[3] ?? '';
-        const costStr = (cells[4] ?? '').replace(/[$*]/g, '');
+        const model = hasModelCol && cells[2] && cells[2] !== '—' ? cells[2] : null;
+        const statusEmoji = (hasModelCol ? cells[3] : cells[2]) ?? '';
+        const costStr = ((hasModelCol ? cells[4] : cells[3]) ?? '').replace(/[$*]/g, '');
         const totalCostCents = Math.round(parseFloat(costStr) * 100);
-        const durationSeconds = parseDuration(cells[5] ?? '');
+        const durationSeconds = parseDuration((hasModelCol ? cells[5] : cells[4]) ?? '');
 
         const status =
           Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
