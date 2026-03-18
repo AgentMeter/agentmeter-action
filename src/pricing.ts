@@ -64,18 +64,31 @@ const FALLBACK_PRICING: Array<{ prefix: string } & ModelPricing> = [
 ];
 
 /**
- * Expected shape of the /api/models/pricing response.
+ * Validates that a value looks like a valid model pricing entry from the API.
  */
-interface PricingApiResponse {
-  models: Record<
-    string,
-    {
-      inputPerMillionTokens: number;
-      outputPerMillionTokens: number;
-      cacheWritePerMillionTokens: number;
-      cacheReadPerMillionTokens: number;
-    }
-  >;
+function isValidModelEntry(v: unknown): v is {
+  inputPerMillionTokens: number;
+  outputPerMillionTokens: number;
+  cacheWritePerMillionTokens: number;
+  cacheReadPerMillionTokens: number;
+} {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['inputPerMillionTokens'] === 'number' &&
+    typeof o['outputPerMillionTokens'] === 'number' &&
+    typeof o['cacheWritePerMillionTokens'] === 'number' &&
+    typeof o['cacheReadPerMillionTokens'] === 'number'
+  );
+}
+
+/**
+ * Validates that the API response has the expected shape.
+ */
+function isValidPricingResponse(data: unknown): data is { models: Record<string, unknown> } {
+  if (typeof data !== 'object' || data === null) return false;
+  const o = data as Record<string, unknown>;
+  return typeof o['models'] === 'object' && o['models'] !== null;
 }
 
 /**
@@ -93,14 +106,16 @@ export async function fetchPricing({
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as PricingApiResponse;
+    const data: unknown = await res.json();
+    if (!isValidPricingResponse(data)) throw new Error('Unexpected response shape');
     const result: Record<string, ModelPricing> = {};
-    for (const [model, p] of Object.entries(data.models)) {
+    for (const [model, entry] of Object.entries(data.models)) {
+      if (!isValidModelEntry(entry)) continue;
       result[model] = {
-        inputPer1M: p.inputPerMillionTokens,
-        outputPer1M: p.outputPerMillionTokens,
-        cacheWritePer1M: p.cacheWritePerMillionTokens,
-        cacheReadPer1M: p.cacheReadPerMillionTokens,
+        inputPer1M: entry.inputPerMillionTokens,
+        outputPer1M: entry.outputPerMillionTokens,
+        cacheWritePer1M: entry.cacheWritePerMillionTokens,
+        cacheReadPer1M: entry.cacheReadPerMillionTokens,
       };
     }
     return result;
@@ -128,7 +143,8 @@ export function getPricing({
   const lower = model.toLowerCase();
 
   // Exact match from API
-  if (apiPricing[lower]) return apiPricing[lower] ?? null;
+  const exact = apiPricing[lower];
+  if (exact != null) return exact;
 
   // Prefix fallback
   return FALLBACK_PRICING.find((p) => lower.startsWith(p.prefix)) ?? null;

@@ -196,7 +196,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
           .split('|')
           .map((c) => c.trim())
           .filter(Boolean);
-        if (cells.length < 4) return null;
+        if (cells.length < 5) return null;
 
         // Support both old (5-col) and new (6-col) format:
         // Old: # | Workflow | Status | Cost | Duration
