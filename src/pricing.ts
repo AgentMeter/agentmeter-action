@@ -61,7 +61,7 @@ const FALLBACK_PRICING: Array<{ prefix: string } & ModelPricing> = [
     cacheWritePer1M: 0.3,
     cacheReadPer1M: 0.03,
   },
-  // OpenAI models — no cache write charge; cacheReadPer1M is 50% of input by default
+  // OpenAI models — no cache write charge; cache read pricing varies by model (~25% of input)
   {
     prefix: 'o3',
     inputPer1M: 10,

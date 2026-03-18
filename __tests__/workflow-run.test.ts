@@ -93,7 +93,7 @@ describe('resolveWorkflowRun', () => {
     expect(result.shouldProceed).toBe(false);
   });
 
-  it('skips when no conclusion job exists', async () => {
+  it('proceeds when no conclusion job exists (non-gh-aw workflow)', async () => {
     const octokit = makeOctokit({
       jobs: [{ name: 'agent', status: 'completed' }],
     });
@@ -101,7 +101,7 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.shouldProceed).toBe(false);
+    expect(result.shouldProceed).toBe(true);
   });
 
   it('skips immediately for skipped conclusion without API calls', async () => {

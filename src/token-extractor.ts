@@ -67,15 +67,15 @@ function tryExtractFromCodexJsonl(
     if (!trimmed.includes('"token_count"')) continue;
     try {
       const parsed = JSON.parse(trimmed) as unknown;
-      if (
-        typeof parsed === 'object' &&
-        parsed !== null &&
-        (parsed as Record<string, unknown>)['type'] === 'event_msg' &&
-        typeof (parsed as Record<string, unknown>)['payload'] === 'object'
-      ) {
-        const payload = (parsed as Record<string, unknown>)['payload'] as Record<string, unknown>;
-        if (payload['type'] === 'token_count') {
-          lastTokenEvent = parsed as CodexTokenEvent;
+      const obj =
+        typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+      if (obj?.['type'] === 'event_msg') {
+        const payload = obj['payload'];
+        if (typeof payload === 'object' && payload !== null) {
+          const p = payload as Record<string, unknown>;
+          if (p['type'] === 'token_count') {
+            lastTokenEvent = parsed as CodexTokenEvent;
+          }
         }
       }
     } catch {
@@ -85,7 +85,9 @@ function tryExtractFromCodexJsonl(
 
   if (!lastTokenEvent) return null;
 
-  const usage = lastTokenEvent.payload.info.total_token_usage;
+  const usage = lastTokenEvent.payload?.info?.total_token_usage;
+  if (!usage) return null;
+
   return {
     tokens: {
       inputTokens: usage.input_tokens ?? 0,
@@ -145,9 +147,15 @@ export function resolveTokens({
   /** Explicit cache write token count override */
   cacheWriteTokensOverride: number | null;
 }): TokenCountsWithMeta | undefined {
-  if (inputTokensOverride !== null) {
+  const hasAnyOverride =
+    inputTokensOverride !== null ||
+    outputTokensOverride !== null ||
+    cacheReadTokensOverride !== null ||
+    cacheWriteTokensOverride !== null;
+
+  if (hasAnyOverride) {
     return {
-      inputTokens: inputTokensOverride,
+      inputTokens: inputTokensOverride ?? 0,
       outputTokens: outputTokensOverride ?? 0,
       cacheReadTokens: cacheReadTokensOverride ?? 0,
       cacheWriteTokens: cacheWriteTokensOverride ?? 0,
