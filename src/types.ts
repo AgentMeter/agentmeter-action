@@ -152,6 +152,27 @@ export interface AgentTokensArtifact {
   cache_write_tokens: number;
 }
 
+/**
+ * A single JSONL event emitted by `codex exec` in streaming mode.
+ * Token counts are found in `token_count` events.
+ */
+export interface CodexTokenEvent {
+  type: 'event_msg';
+  payload: {
+    type: 'token_count';
+    info: {
+      total_token_usage: {
+        /** Total input tokens (does not include cached) */
+        input_tokens?: number;
+        /** Total output tokens */
+        output_tokens?: number;
+        /** Tokens served from the prompt cache */
+        cached_input_tokens?: number;
+      };
+    };
+  };
+}
+
 /** Known Claude Code JSON output structure (best-effort) */
 export interface ClaudeCodeOutput {
   /** Top-level usage block */

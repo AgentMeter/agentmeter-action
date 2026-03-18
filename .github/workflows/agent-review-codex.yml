@@ -1,0 +1,101 @@
+name: "Agent: Code Review (Codex)"
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+concurrency:
+  group: agent-review-codex-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Pre-fetch base and head refs
+        run: |
+          git fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Record start time
+        id: timer
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Codex
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/review.md
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'codex-mini-latest' }}
+          sandbox: workspace-write
+          output-file: /tmp/codex-output.md
+          # Write streaming JSONL so the token extraction step can parse it
+          codex-args: '["--session-file", "/tmp/codex-session.jsonl"]'
+
+      - name: Post review comment
+        if: steps.codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: process.env.CODEX_REVIEW,
+            });
+        env:
+          CODEX_REVIEW: ${{ steps.codex.outputs.final-message }}
+
+      - name: Extract Codex token usage
+        id: extract_tokens
+        if: always()
+        run: |
+          SESSION_FILE="/tmp/codex-session.jsonl"
+          # Fall back to most-recent session file if --session-file wasn't honoured
+          if [ ! -f "$SESSION_FILE" ]; then
+            SESSION_FILE=$(ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
+          fi
+          if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
+            TOKEN_LINE=$(grep '"token_count"' "$SESSION_FILE" 2>/dev/null | tail -1 || true)
+            if [ -n "$TOKEN_LINE" ]; then
+              INPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.input_tokens // 0')
+              OUTPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.output_tokens // 0')
+              CACHE_READ=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.cached_input_tokens // 0')
+            else
+              INPUT=0; OUTPUT=0; CACHE_READ=0
+            fi
+          else
+            INPUT=0; OUTPUT=0; CACHE_READ=0
+          fi
+          {
+            echo "input_tokens=$INPUT"
+            echo "output_tokens=$OUTPUT"
+            echo "cache_read_tokens=$CACHE_READ"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Track with AgentMeter
+        if: always()
+        uses: foo-software/agentmeter-action@main
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: codex
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'codex-mini-latest' }}
+          status: ${{ job.status == 'success' && 'success' || 'failed' }}
+          input_tokens: ${{ steps.extract_tokens.outputs.input_tokens }}
+          output_tokens: ${{ steps.extract_tokens.outputs.output_tokens }}
+          cache_read_tokens: ${{ steps.extract_tokens.outputs.cache_read_tokens }}
+          started_at: ${{ steps.timer.outputs.started_at }}
+          post_comment: 'true'

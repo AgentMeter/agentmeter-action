@@ -61,6 +61,42 @@ const FALLBACK_PRICING: Array<{ prefix: string } & ModelPricing> = [
     cacheWritePer1M: 0.3,
     cacheReadPer1M: 0.03,
   },
+  // OpenAI models — no cache write charge; cacheReadPer1M is 50% of input by default
+  {
+    prefix: 'o3',
+    inputPer1M: 10,
+    outputPer1M: 40,
+    cacheWritePer1M: 0,
+    cacheReadPer1M: 2.5,
+  },
+  {
+    prefix: 'o4-mini',
+    inputPer1M: 1.1,
+    outputPer1M: 4.4,
+    cacheWritePer1M: 0,
+    cacheReadPer1M: 0.275,
+  },
+  {
+    prefix: 'gpt-4.1-mini',
+    inputPer1M: 0.4,
+    outputPer1M: 1.6,
+    cacheWritePer1M: 0,
+    cacheReadPer1M: 0.1,
+  },
+  {
+    prefix: 'gpt-4.1',
+    inputPer1M: 2,
+    outputPer1M: 8,
+    cacheWritePer1M: 0,
+    cacheReadPer1M: 0.5,
+  },
+  {
+    prefix: 'gpt-4o',
+    inputPer1M: 2.5,
+    outputPer1M: 10,
+    cacheWritePer1M: 0,
+    cacheReadPer1M: 1.25,
+  },
 ];
 
 /**

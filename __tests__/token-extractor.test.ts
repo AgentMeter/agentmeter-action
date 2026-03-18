@@ -67,6 +67,69 @@ describe('extractTokensFromOutput', () => {
     expect(result!.isApproximate).toBe(true);
   });
 
+  it('parses Codex JSONL token_count event', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'event_msg', payload: { type: 'message_start' } }),
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 8408,
+              output_tokens: 712,
+              cached_input_tokens: 1664,
+            },
+          },
+        },
+      }),
+    ].join('\n');
+
+    const result = extractTokensFromOutput(jsonlOutput);
+    expect(result).not.toBeNull();
+    expect(result!.tokens.inputTokens).toBe(8408);
+    expect(result!.tokens.outputTokens).toBe(712);
+    expect(result!.tokens.cacheReadTokens).toBe(1664);
+    expect(result!.tokens.cacheWriteTokens).toBe(0);
+    expect(result!.isApproximate).toBe(false);
+  });
+
+  it('uses the last Codex token_count event when multiple are present', () => {
+    const jsonlOutput = [
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { input_tokens: 100, output_tokens: 50, cached_input_tokens: 0 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: { input_tokens: 500, output_tokens: 200, cached_input_tokens: 300 },
+          },
+        },
+      }),
+    ].join('\n');
+
+    const result = extractTokensFromOutput(jsonlOutput);
+    expect(result!.tokens.inputTokens).toBe(500);
+    expect(result!.tokens.outputTokens).toBe(200);
+    expect(result!.tokens.cacheReadTokens).toBe(300);
+  });
+
+  it('returns null for Codex JSONL with no token_count events', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'event_msg', payload: { type: 'message_start' } }),
+      JSON.stringify({ type: 'event_msg', payload: { type: 'message_stop' } }),
+    ].join('\n');
+    expect(extractTokensFromOutput(jsonlOutput)).toBeNull();
+  });
+
   it('defaults missing cache fields to zero in JSON', () => {
     const output = JSON.stringify({
       usage: { input_tokens: 100, output_tokens: 50 },

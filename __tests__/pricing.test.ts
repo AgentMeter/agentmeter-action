@@ -138,7 +138,7 @@ describe('getPricing', () => {
   });
 
   it('returns null for unknown model', () => {
-    const result = getPricing({ apiPricing: {}, model: 'gpt-4o' });
+    const result = getPricing({ apiPricing: {}, model: 'unknown-model-xyz' });
     expect(result).toBeNull();
   });
 
