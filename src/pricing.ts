@@ -111,7 +111,7 @@ export async function fetchPricing({
     const result: Record<string, ModelPricing> = {};
     for (const [model, entry] of Object.entries(data.models)) {
       if (!isValidModelEntry(entry)) continue;
-      result[model] = {
+      result[model.toLowerCase()] = {
         inputPer1M: entry.inputPerMillionTokens,
         outputPer1M: entry.outputPerMillionTokens,
         cacheWritePer1M: entry.cacheWritePerMillionTokens,

@@ -75,6 +75,23 @@ describe('fetchPricing', () => {
     expect(result).toEqual({});
   });
 
+  it('lowercases model keys from the API response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          models: {
+            'Claude-Sonnet-4-5': validApiResponse.models['claude-sonnet-4-5'],
+          },
+        }),
+      })
+    );
+    const result = await fetchPricing({ apiUrl: 'https://example.com' });
+    expect(result['claude-sonnet-4-5']).toBeDefined();
+    expect(result['Claude-Sonnet-4-5']).toBeUndefined();
+  });
+
   it('skips malformed model entries without crashing', async () => {
     vi.stubGlobal(
       'fetch',
