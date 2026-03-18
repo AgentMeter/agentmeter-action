@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildCommentBody } from '../src/comment';
+import type { ModelPricing } from '../src/pricing';
 import type { RunCommentData } from '../src/types';
+
+const testPricing: Record<string, ModelPricing> = {
+  'claude-sonnet-4-5': {
+    inputPer1M: 3,
+    outputPer1M: 15,
+    cacheWritePer1M: 3.75,
+    cacheReadPer1M: 0.3,
+  },
+};
 
 const baseRun: RunCommentData = {
   workflowName: 'agent-implement',
@@ -20,27 +30,44 @@ const baseRun: RunCommentData = {
 
 describe('buildCommentBody', () => {
   it('contains the agentmeter comment marker', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('<!-- agentmeter -->');
   });
 
   it('contains the AgentMeter heading', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('⚡ AgentMeter');
   });
 
   it('formats cost correctly', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('$4.52');
   });
 
   it('shows success emoji for successful run', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('✅');
   });
 
   it('shows failure emoji for failed run', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, status: 'failed', totalCostCents: 610 },
     });
@@ -49,6 +76,7 @@ describe('buildCommentBody', () => {
 
   it('shows timed_out emoji', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, status: 'timed_out' },
     });
@@ -57,6 +85,7 @@ describe('buildCommentBody', () => {
 
   it('shows cancelled emoji', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, status: 'cancelled' },
     });
@@ -65,6 +94,7 @@ describe('buildCommentBody', () => {
 
   it('shows needs_human emoji', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, status: 'needs_human' },
     });
@@ -72,18 +102,39 @@ describe('buildCommentBody', () => {
   });
 
   it('includes workflow name', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('agent-implement');
   });
 
+  it('includes model name in table row', () => {
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
+    expect(body).toContain('claude-sonnet-4-5');
+  });
+
   it('includes dashboard link', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('https://agentmeter.app/dashboard/runs/abc123');
     expect(body).toContain('View in AgentMeter →');
   });
 
   it('includes token breakdown details section', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('<details>');
     expect(body).toContain('Token breakdown');
     expect(body).toContain('42,318');
@@ -91,13 +142,18 @@ describe('buildCommentBody', () => {
   });
 
   it('includes model and turns in token breakdown', () => {
-    const body = buildCommentBody({ existingBody: null, runData: baseRun });
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: baseRun,
+    });
     expect(body).toContain('claude-sonnet-4-5');
     expect(body).toContain('14 turns');
   });
 
   it('shows approximate warning when isApproximate is true', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: {
         ...baseRun,
@@ -109,18 +165,45 @@ describe('buildCommentBody', () => {
 
   it('skips token details when tokens are not provided', () => {
     const body = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, tokens: undefined },
     });
     expect(body).not.toContain('<details>');
   });
 
+  it('correctly parses an existing comment written in the old 5-column format', () => {
+    const oldFormatBody = [
+      '<!-- agentmeter -->',
+      '## ⚡ AgentMeter',
+      '',
+      '| # | Workflow | Status | Cost | Duration |',
+      '|---|----------|--------|------|----------|',
+      '| 1 | AgentMeter — Inline Test | ✅ | $0.01 | 11s |',
+      '',
+      '[View in AgentMeter →](https://agentmeter.app/dashboard/runs/abc)',
+    ].join('\n');
+
+    const updatedBody = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: oldFormatBody,
+      runData: { ...baseRun, workflowName: 'Agent: Code Review', totalCostCents: 3300 },
+    });
+    expect(updatedBody).toContain('AgentMeter — Inline Test');
+    expect(updatedBody).toContain('Agent: Code Review');
+    expect(updatedBody).toContain('**Total**');
+    // Old row should preserve its cost, not show $0.00
+    expect(updatedBody).toContain('$0.01');
+  });
+
   it('appends new run to existing comment and shows total', () => {
     const firstBody = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: null,
       runData: { ...baseRun, workflowName: 'implement', totalCostCents: 452 },
     });
     const updatedBody = buildCommentBody({
+      apiPricing: testPricing,
       existingBody: firstBody,
       runData: {
         ...baseRun,
