@@ -40,8 +40,6 @@ jobs:
           model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           sandbox: workspace-write
           output-file: /tmp/codex-output.md
-          # Write streaming JSONL so the token extraction step can parse it
-          codex-args: '["--session-file", "/tmp/codex-session.jsonl"]'
 
       - name: Post review comment
         if: steps.codex.outputs.final-message != ''
@@ -62,11 +60,8 @@ jobs:
         id: extract_tokens
         if: always()
         run: |
-          SESSION_FILE="/tmp/codex-session.jsonl"
-          # Fall back to most-recent session file if --session-file wasn't honoured
-          if [ ! -f "$SESSION_FILE" ]; then
-            SESSION_FILE=$(ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
-          fi
+          # codex exec writes session JSONL to ~/.codex/sessions/ automatically
+          SESSION_FILE=$(ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
           if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
             TOKEN_LINE=$(grep '"token_count"' "$SESSION_FILE" 2>/dev/null | tail -1 || true)
             if [ -n "$TOKEN_LINE" ]; then
