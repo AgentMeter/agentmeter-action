@@ -4,6 +4,7 @@ import { upsertComment } from './comment';
 import { extractContext } from './context';
 import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
+import { fetchPricing } from './pricing';
 import { resolveTokens } from './token-extractor';
 import { resolveWorkflowRun } from './workflow-run';
 
@@ -27,6 +28,8 @@ export async function run(): Promise<void> {
   const ctx = extractContext();
 
   const githubToken = core.getInput('github_token') || process.env['GITHUB_TOKEN'] || '';
+
+  const apiPricing = await fetchPricing({ apiUrl: inputs.apiUrl });
 
   // When workflow_run_id is provided, resolve all workflow-run data automatically:
   // timestamps, trigger number, and agent-tokens artifact. This removes the need
@@ -125,6 +128,7 @@ export async function run(): Promise<void> {
       }
       const octokit = github.getOctokit(githubToken);
       await upsertComment({
+        apiPricing,
         octokit,
         owner: ctx.owner,
         repo: ctx.repo,
