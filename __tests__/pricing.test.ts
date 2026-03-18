@@ -18,9 +18,7 @@ const validApiResponse = {
       cacheReadPerMillionTokens: 0.08,
     },
   },
-  sources: [
-    { provider: 'anthropic', url: 'https://www.anthropic.com/pricing' },
-  ],
+  sources: [{ provider: 'anthropic', url: 'https://www.anthropic.com/pricing' }],
 };
 
 describe('fetchPricing', () => {
