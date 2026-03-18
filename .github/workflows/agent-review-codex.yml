@@ -37,7 +37,7 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/prompts/review.md
-          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'codex-mini-latest' }}
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           sandbox: workspace-write
           output-file: /tmp/codex-output.md
           # Write streaming JSONL so the token extraction step can parse it
@@ -92,7 +92,7 @@ jobs:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
           engine: codex
-          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'codex-mini-latest' }}
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           status: ${{ job.status == 'success' && 'success' || 'failed' }}
           input_tokens: ${{ steps.extract_tokens.outputs.input_tokens }}
           output_tokens: ${{ steps.extract_tokens.outputs.output_tokens }}
