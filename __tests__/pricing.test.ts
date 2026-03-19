@@ -18,6 +18,7 @@ const validApiResponse = {
       cacheReadPerMillionTokens: 0.08,
     },
   },
+  sources: [{ provider: 'anthropic', url: 'https://www.anthropic.com/pricing' }],
 };
 
 describe('fetchPricing', () => {
@@ -92,6 +93,27 @@ describe('fetchPricing', () => {
     expect(result['Claude-Sonnet-4-5']).toBeUndefined();
   });
 
+  it('treats null cacheReadPerMillionTokens as 0', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          models: {
+            'gpt-4o': {
+              inputPerMillionTokens: 2.5,
+              outputPerMillionTokens: 10,
+              cacheWritePerMillionTokens: 0,
+              cacheReadPerMillionTokens: null,
+            },
+          },
+        }),
+      })
+    );
+    const result = await fetchPricing({ apiUrl: 'https://example.com' });
+    expect(result['gpt-4o']?.cacheReadPer1M).toBe(0);
+  });
+
   it('skips malformed model entries without crashing', async () => {
     vi.stubGlobal(
       'fetch',
@@ -131,14 +153,8 @@ describe('getPricing', () => {
     expect(result?.inputPer1M).toBe(3);
   });
 
-  it('falls back to prefix table when model not in API response', () => {
+  it('returns null when model is not in API response', () => {
     const result = getPricing({ apiPricing: {}, model: 'claude-sonnet-4-99' });
-    expect(result?.inputPer1M).toBe(3);
-    expect(result?.outputPer1M).toBe(15);
-  });
-
-  it('returns null for unknown model', () => {
-    const result = getPricing({ apiPricing: {}, model: 'gpt-4o' });
     expect(result).toBeNull();
   });
 

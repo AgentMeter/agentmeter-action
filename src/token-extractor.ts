@@ -1,8 +1,8 @@
-import type { ClaudeCodeOutput, TokenCounts, TokenCountsWithMeta } from './types';
+import type { ClaudeCodeOutput, CodexTokenEvent, TokenCounts, TokenCountsWithMeta } from './types';
 
 /**
  * Attempts to extract token counts from agent stdout.
- * Tries JSON parsing first, then falls back to regex extraction.
+ * Tries Claude JSON, Codex JSONL, then falls back to regex extraction.
  * Returns null if no token data can be found.
  */
 export function extractTokensFromOutput(
@@ -12,6 +12,9 @@ export function extractTokensFromOutput(
 
   const jsonResult = tryExtractFromJson(agentOutput);
   if (jsonResult) return jsonResult;
+
+  const codexResult = tryExtractFromCodexJsonl(agentOutput);
+  if (codexResult) return codexResult;
 
   return tryExtractFromText(agentOutput);
 }
@@ -40,6 +43,60 @@ function tryExtractFromJson(
   } catch {
     return null;
   }
+}
+
+/**
+ * Tries to extract token counts from Codex CLI JSONL streaming output.
+ * Looks for `token_count` events emitted by `codex exec` and takes the last one,
+ * which reflects cumulative totals for the full session.
+ *
+ * Codex field mapping:
+ *   input_tokens        → inputTokens
+ *   output_tokens       → outputTokens
+ *   cached_input_tokens → cacheReadTokens  (prompt cache hits)
+ *   (no cache write field — OpenAI does not bill separately for cache writes)
+ */
+function tryExtractFromCodexJsonl(
+  agentOutput: string
+): { tokens: TokenCounts; isApproximate: boolean } | null {
+  const lines = agentOutput.split('\n');
+  let lastTokenEvent: CodexTokenEvent | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.includes('"token_count"')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const obj =
+        typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+      if (obj?.['type'] === 'event_msg') {
+        const payload = obj['payload'];
+        if (typeof payload === 'object' && payload !== null) {
+          const p = payload as Record<string, unknown>;
+          if (p['type'] === 'token_count') {
+            lastTokenEvent = parsed as CodexTokenEvent;
+          }
+        }
+      }
+    } catch {
+      // not valid JSON, skip line
+    }
+  }
+
+  if (!lastTokenEvent) return null;
+
+  const usage = lastTokenEvent.payload?.info?.total_token_usage;
+  if (!usage) return null;
+
+  return {
+    tokens: {
+      inputTokens: usage.input_tokens ?? 0,
+      outputTokens: usage.output_tokens ?? 0,
+      cacheReadTokens: usage.cached_input_tokens ?? 0,
+      cacheWriteTokens: 0,
+    },
+    isApproximate: false,
+  };
 }
 
 /**
@@ -90,9 +147,15 @@ export function resolveTokens({
   /** Explicit cache write token count override */
   cacheWriteTokensOverride: number | null;
 }): TokenCountsWithMeta | undefined {
-  if (inputTokensOverride !== null) {
+  const hasAnyOverride =
+    inputTokensOverride !== null ||
+    outputTokensOverride !== null ||
+    cacheReadTokensOverride !== null ||
+    cacheWriteTokensOverride !== null;
+
+  if (hasAnyOverride) {
     return {
-      inputTokens: inputTokensOverride,
+      inputTokens: inputTokensOverride ?? 0,
       outputTokens: outputTokensOverride ?? 0,
       cacheReadTokens: cacheReadTokensOverride ?? 0,
       cacheWriteTokens: cacheWriteTokensOverride ?? 0,

@@ -172,7 +172,12 @@ async function checkConclusionJobCompleted({
       run_id: workflowRunId,
     });
     const conclusionJob = data.jobs.find((j) => j.name === 'conclusion');
-    if (!conclusionJob || conclusionJob.status !== 'completed') {
+    if (!conclusionJob) {
+      // No conclusion job means this is not a gh-aw workflow — proceed without gating.
+      core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
+      return true;
+    }
+    if (conclusionJob.status !== 'completed') {
       core.info('AgentMeter: conclusion job not yet completed — skipping this firing.');
       return false;
     }
