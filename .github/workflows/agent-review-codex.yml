@@ -59,19 +59,34 @@ jobs:
       - name: Extract Codex token usage
         id: extract_tokens
         if: always()
+        env:
+          CODEX_HOME: /home/runner/.codex
         run: |
-          # codex exec writes session JSONL to ~/.codex/sessions/ automatically
-          SESSION_FILE=$(ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
+          echo "=== CODEX_HOME contents ==="
+          find "$CODEX_HOME" -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== end ==="
+
+          # Try session files in CODEX_HOME/sessions/ first, then ~/.codex/sessions/
+          SESSION_FILE=$(ls -t "$CODEX_HOME"/sessions/*.jsonl 2>/dev/null | head -1 || \
+                         ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
+
+          echo "SESSION_FILE=$SESSION_FILE"
+
           if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
+            echo "=== last 5 lines of session file ==="
+            tail -5 "$SESSION_FILE"
+            echo "=== end ==="
             TOKEN_LINE=$(grep '"token_count"' "$SESSION_FILE" 2>/dev/null | tail -1 || true)
             if [ -n "$TOKEN_LINE" ]; then
               INPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.input_tokens // 0')
               OUTPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.output_tokens // 0')
               CACHE_READ=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.cached_input_tokens // 0')
             else
+              echo "No token_count event found in session file"
               INPUT=0; OUTPUT=0; CACHE_READ=0
             fi
           else
+            echo "No session file found"
             INPUT=0; OUTPUT=0; CACHE_READ=0
           fi
           {
