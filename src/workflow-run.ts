@@ -371,17 +371,20 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
       return null;
     }
     const parsed = JSON.parse(new TextDecoder().decode(file)) as AgentTokensArtifact;
-    if (typeof parsed.input_tokens !== 'number') {
+    if (
+      typeof parsed.input_tokens !== 'number' ||
+      typeof parsed.output_tokens !== 'number' ||
+      typeof parsed.cache_read_tokens !== 'number' ||
+      typeof parsed.cache_write_tokens !== 'number'
+    ) {
       core.warning('AgentMeter: agent-tokens artifact has unexpected structure.');
       return null;
     }
     return {
+      cache_read_tokens: parsed.cache_read_tokens,
+      cache_write_tokens: parsed.cache_write_tokens,
       input_tokens: parsed.input_tokens,
-      output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
-      cache_read_tokens:
-        typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
-      cache_write_tokens:
-        typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
+      output_tokens: parsed.output_tokens,
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);
