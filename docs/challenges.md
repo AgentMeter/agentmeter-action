@@ -124,4 +124,4 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 | `GITHUB_TOKEN` availability | ✅ | `github_token` input with `default: ${{ github.token }}` |
 | Node.js version | ✅ | node24 |
 | Pricing table | ✅ | Fetched from `/api/models/pricing`; shows `—` if unreachable |
-| Codex token counts | ⚠️ Known limitation | `codex exec` (via `openai/codex-action`) does not expose per-run token counts through any stable interface. Cost shows as `—` for Codex runs. Duration and status are tracked correctly. |
+| Codex token counts | 🔬 Under investigation | `codex exec` writes rollout JSONL to `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`. `token_count` events in those files contain cumulative `total_token_usage`. The workflow sets a known `codex-home` and parses the rollout file after the codex step. Two alternative paths exist: (1) rollout JSONL file, (2) `codex exec --json` stdout `turn.completed` events — but the `openai/codex-action` captures only the final message, not stdout JSONL. If the rollout file is empty or absent, cost shows as `—`. |

@@ -39,6 +39,32 @@ jobs:
           prompt-file: .github/codex/prompts/review.md
           model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           sandbox: workspace-write
+          codex-home: /tmp/codex-home
+
+      - name: Extract Codex token usage
+        id: codex-tokens
+        if: always()
+        run: |
+          rollout=$(find /tmp/codex-home/sessions -name "rollout-*.jsonl" 2>/dev/null | sort | tail -1)
+          if [ -z "$rollout" ]; then
+            echo "No rollout JSONL found — token counts unavailable"
+            echo "input_tokens=" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Parsing rollout: $rollout"
+          token_line=$(grep '"token_count"' "$rollout" | tail -1)
+          if [ -z "$token_line" ]; then
+            echo "No token_count event in rollout — token counts unavailable"
+            echo "input_tokens=" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "input_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.input_tokens // empty')" >> "$GITHUB_OUTPUT"
+          echo "output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')" >> "$GITHUB_OUTPUT"
+          echo "cache_read_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.cached_input_tokens // empty')" >> "$GITHUB_OUTPUT"
 
       - name: Post review comment
         if: steps.codex.outputs.final-message != ''
@@ -66,3 +92,6 @@ jobs:
           status: ${{ job.status == 'success' && 'success' || 'failed' }}
           started_at: ${{ steps.timer.outputs.started_at }}
           post_comment: 'true'
+          input_tokens: ${{ steps.codex-tokens.outputs.input_tokens }}
+          output_tokens: ${{ steps.codex-tokens.outputs.output_tokens }}
+          cache_read_tokens: ${{ steps.codex-tokens.outputs.cache_read_tokens }}
