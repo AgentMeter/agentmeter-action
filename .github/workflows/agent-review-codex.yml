@@ -65,21 +65,17 @@ jobs:
           DB="$CODEX_HOME/logs_1.sqlite"
           INPUT=0; OUTPUT=0; CACHE_READ=0
 
-          if [ -f "$DB" ]; then
-            echo "=== messages containing 'token' ==="
-            sqlite3 "$DB" \
-              "SELECT message FROM logs WHERE message LIKE '%token%' ORDER BY id DESC LIMIT 10;" \
-              2>/dev/null || echo "(query failed)"
-            echo "=== end ==="
+          echo "=== CODEX_HOME files ==="
+          find "$CODEX_HOME" -type f 2>/dev/null | while read -r f; do
+            echo "--- $f ---"
+            if [[ "$f" == *.json ]]; then cat "$f" 2>/dev/null; fi
+            if [[ "$f" == *.toml ]]; then cat "$f" 2>/dev/null; fi
+          done
+          echo "=== end ==="
 
-            echo "=== last 10 messages ==="
-            sqlite3 "$DB" \
-              "SELECT message FROM logs ORDER BY id DESC LIMIT 10;" \
-              2>/dev/null || echo "(query failed)"
-            echo "=== end ==="
-          else
-            echo "No SQLite database found at $DB"
-          fi
+          echo "=== /tmp/codex-output.md (last 20 lines) ==="
+          tail -20 /tmp/codex-output.md 2>/dev/null || echo "(not found)"
+          echo "=== end ==="
 
           {
             echo "input_tokens=$INPUT"
