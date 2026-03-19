@@ -1,7 +1,11 @@
 #!/bin/sh
 
-# Run typecheck across all workspaces
-npm run typecheck
+# Run typecheck
+npm run type-check
+
+# Rebuild dist so the committed bundle is always in sync with src
+npm run build
+git add dist/index.js dist/licenses.txt
 
 # Run lint-staged (Biome) on staged files
 npx --no-install lint-staged
