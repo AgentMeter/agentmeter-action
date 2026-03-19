@@ -51,6 +51,7 @@ export async function run(): Promise<void> {
   let workflowRunTokens: ReturnType<typeof resolveTokens>;
   let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
+  let resolvedTriggerRef: string | null = null;
   let resolvedStartedAt = inputs.startedAt || selfStartedAt;
   let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
   let resolvedWorkflowName = ctx.workflowName;
@@ -82,6 +83,7 @@ export async function run(): Promise<void> {
       if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
+      resolvedTriggerRef = runData.triggerRef;
       if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
     }
@@ -109,24 +111,28 @@ export async function run(): Promise<void> {
           cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
           cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
           inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
-          isApproximate: hasAnyExplicit ? false : (baseTokens?.isApproximate ?? false),
+          isApproximate: baseTokens?.isApproximate ?? false,
           outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
         }
       : undefined;
 
-  // Prefer ctx.triggerRef (correctly set for inline runs including issue vs PR distinction).
-  // Fall back to buildTriggerRef only for companion workflow_run mode where ctx.triggerRef is null.
+  // Prefer ctx.triggerRef (inline runs — context.ts already resolved PR vs issue correctly).
+  // Fall back to resolvedTriggerRef from resolveTrigger (companion workflow_run mode — it knows
+  // whether a PR was found regardless of the triggering event name, e.g. issue_comment on a PR).
+  // Last resort: buildTriggerRef from the event name and number.
   const triggerRef =
     ctx.triggerRef ??
+    resolvedTriggerRef ??
     (resolvedTriggerNumber !== null
       ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
       : null);
 
   const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
 
-  const durationSeconds = Math.round(
-    (new Date(resolvedCompletedAt).getTime() - new Date(resolvedStartedAt).getTime()) / 1000
-  );
+  const startMs = new Date(resolvedStartedAt).getTime();
+  const endMs = new Date(resolvedCompletedAt).getTime();
+  const durationSeconds =
+    Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.round((endMs - startMs) / 1000) : 0;
 
   const result = await submitRun({
     apiKey: inputs.apiKey,

@@ -15,6 +15,8 @@ export interface WorkflowRunData {
   triggerNumber: number | null;
   /** Event name of the triggering run (pull_request, issues, etc.) */
   triggerEvent: string;
+  /** Human-readable trigger ref (e.g. "PR #42", "#7") resolved from the triggering run */
+  triggerRef: string | null;
   /** Token counts extracted from the agent-tokens artifact, if available */
   tokens: TokenCountsWithMeta | undefined;
   /**
@@ -82,7 +84,7 @@ export async function resolveWorkflowRun({
   const startedAt = run?.run_started_at ?? new Date().toISOString();
   const completedAt = run?.updated_at ?? new Date().toISOString();
 
-  const { triggerNumber, triggerEvent } = await resolveTrigger({
+  const { triggerNumber, triggerEvent, triggerRef } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
     headBranch: run?.head_branch ?? '',
     event: run?.event ?? '',
@@ -98,6 +100,7 @@ export async function resolveWorkflowRun({
     completedAt,
     triggerNumber,
     triggerEvent,
+    triggerRef,
     tokens,
     shouldProceed: true,
     normalizedStatus,
@@ -139,6 +142,7 @@ function emptyResult({
     completedAt: now,
     triggerNumber: null,
     triggerEvent: '',
+    triggerRef: null,
     tokens: undefined,
     shouldProceed,
     normalizedStatus,
@@ -264,11 +268,13 @@ async function resolveTrigger({
   pullRequests: Array<{ number: number }>;
   /** Repository name */
   repo: string;
-}): Promise<{ triggerNumber: number | null; triggerEvent: string }> {
+}): Promise<{ triggerNumber: number | null; triggerEvent: string; triggerRef: string | null }> {
   if (pullRequests.length > 0 && pullRequests[0]) {
+    const num = pullRequests[0].number;
     return {
-      triggerNumber: pullRequests[0].number,
+      triggerNumber: num,
       triggerEvent: event,
+      triggerRef: `PR #${num}`,
     };
   }
 
@@ -289,7 +295,11 @@ async function resolveTrigger({
         state: 'all',
       });
       if (prs[0]) {
-        return { triggerNumber: prs[0].number, triggerEvent: event };
+        return {
+          triggerNumber: prs[0].number,
+          triggerEvent: event,
+          triggerRef: `PR #${prs[0].number}`,
+        };
       }
     } catch (error) {
       core.warning(`AgentMeter: could not look up PR for branch ${headBranch}: ${error}`);
@@ -299,13 +309,15 @@ async function resolveTrigger({
   // gh-aw issue branches are named agent/issue-N
   const issueMatch = headBranch.match(/issue[/-](\d+)/i);
   if (issueMatch?.[1]) {
+    const num = parseInt(issueMatch[1], 10);
     return {
-      triggerNumber: parseInt(issueMatch[1], 10),
+      triggerNumber: num,
       triggerEvent: 'issues',
+      triggerRef: `#${num}`,
     };
   }
 
-  return { triggerNumber: null, triggerEvent: event || '' };
+  return { triggerNumber: null, triggerEvent: event || '', triggerRef: null };
 }
 
 /**

@@ -161,7 +161,7 @@ function buildTokenDetails({
       : 0;
 
   const pricing = getPricing({ apiPricing, model });
-  const perM = (count: number, pricePerM: number | undefined): string => {
+  const perM = (count: number, pricePerM: number | null | undefined): string => {
     if (!pricing || pricePerM == null) return '—';
     return formatTokenCost((count / 1_000_000) * pricePerM);
   };

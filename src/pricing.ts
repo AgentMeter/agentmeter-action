@@ -10,8 +10,8 @@ export interface ModelPricing {
   outputPer1M: number;
   /** USD per 1M cache write tokens */
   cacheWritePer1M: number;
-  /** USD per 1M cache read tokens */
-  cacheReadPer1M: number;
+  /** USD per 1M cache read tokens; null means the model does not support prompt caching */
+  cacheReadPer1M: number | null;
 }
 
 /**
@@ -68,7 +68,7 @@ export async function fetchPricing({
         inputPer1M: entry.inputPerMillionTokens,
         outputPer1M: entry.outputPerMillionTokens,
         cacheWritePer1M: entry.cacheWritePerMillionTokens,
-        cacheReadPer1M: entry.cacheReadPerMillionTokens ?? 0,
+        cacheReadPer1M: entry.cacheReadPerMillionTokens,
       };
     }
     core.info(`AgentMeter: fetched pricing for ${Object.keys(result).length} models.`);

@@ -93,7 +93,7 @@ describe('fetchPricing', () => {
     expect(result['Claude-Sonnet-4-5']).toBeUndefined();
   });
 
-  it('treats null cacheReadPerMillionTokens as 0', async () => {
+  it('preserves null cacheReadPerMillionTokens (model does not support caching)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -111,7 +111,7 @@ describe('fetchPricing', () => {
       })
     );
     const result = await fetchPricing({ apiUrl: 'https://example.com' });
-    expect(result['gpt-4o']?.cacheReadPer1M).toBe(0);
+    expect(result['gpt-4o']?.cacheReadPer1M).toBeNull();
   });
 
   it('skips malformed model entries without crashing', async () => {
