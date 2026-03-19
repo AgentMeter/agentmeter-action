@@ -270,16 +270,21 @@ async function resolveTrigger({
     };
   }
 
-  // GitHub frequently leaves pull_requests[] empty for workflow_run events even
-  // when the triggering workflow ran on a PR. Look up open PRs by head branch.
-  if (event === 'pull_request' && headBranch) {
+  // GitHub frequently leaves pull_requests[] empty for workflow_run events even when the
+  // triggering workflow ran on a PR. Also covers issue_comment / pull_request_review_comment
+  // triggered workflows. Use state: 'all' + sort by updated so we find recently-merged PRs
+  // in case the companion workflow fires after the PR closes; most-recently-updated PR wins.
+  const prLikeEvents = new Set(['issue_comment', 'pull_request', 'pull_request_review_comment']);
+  if (prLikeEvents.has(event) && headBranch) {
     try {
       const { data: prs } = await octokit.rest.pulls.list({
-        owner,
-        repo,
+        direction: 'desc',
         head: `${owner}:${headBranch}`,
+        owner,
         per_page: 1,
-        state: 'open',
+        repo,
+        sort: 'updated',
+        state: 'all',
       });
       if (prs[0]) {
         return { triggerNumber: prs[0].number, triggerEvent: 'pull_request' };

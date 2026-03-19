@@ -228,6 +228,52 @@ describe('resolveWorkflowRun', () => {
     });
   });
 
+  it('returns null tokens when output_tokens is missing from artifact', async () => {
+    const zip = makeTokenZip(
+      '{"input_tokens":1000,"cache_read_tokens":500,"cache_write_tokens":100}'
+    );
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens).toBeUndefined();
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('unexpected structure')
+    );
+  });
+
+  it('returns null tokens when cache_read_tokens is missing from artifact', async () => {
+    const zip = makeTokenZip('{"input_tokens":1000,"output_tokens":200,"cache_write_tokens":100}');
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens).toBeUndefined();
+  });
+
+  it('returns null tokens when cache_write_tokens is a non-numeric value', async () => {
+    const zip = makeTokenZip(
+      '{"input_tokens":1000,"output_tokens":200,"cache_read_tokens":500,"cache_write_tokens":"bad"}'
+    );
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens).toBeUndefined();
+  });
+
   it('proceeds when listJobsForWorkflowRun fails (non-gh-aw workflow)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi

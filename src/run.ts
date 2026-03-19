@@ -88,23 +88,31 @@ export async function run(): Promise<void> {
   }
 
   // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction.
-  // Split into two resolveTokens calls so the artifact wins over stdout extraction.
+  // Merge per-field so a partial explicit override (e.g. only input_tokens) still falls back to
+  // the artifact or extracted value for the fields that were not explicitly provided.
+  const extractedTokens = resolveTokens({
+    agentOutput: inputs.agentOutput,
+    cacheReadTokensOverride: null,
+    cacheWriteTokensOverride: null,
+    inputTokensOverride: null,
+    outputTokensOverride: null,
+  });
+  const baseTokens = workflowRunTokens ?? extractedTokens;
+  const hasAnyExplicit =
+    inputs.inputTokens !== null ||
+    inputs.outputTokens !== null ||
+    inputs.cacheReadTokens !== null ||
+    inputs.cacheWriteTokens !== null;
   const tokens =
-    resolveTokens({
-      agentOutput: '',
-      inputTokensOverride: inputs.inputTokens,
-      outputTokensOverride: inputs.outputTokens,
-      cacheReadTokensOverride: inputs.cacheReadTokens,
-      cacheWriteTokensOverride: inputs.cacheWriteTokens,
-    }) ??
-    workflowRunTokens ??
-    resolveTokens({
-      agentOutput: inputs.agentOutput,
-      inputTokensOverride: null,
-      outputTokensOverride: null,
-      cacheReadTokensOverride: null,
-      cacheWriteTokensOverride: null,
-    });
+    hasAnyExplicit || baseTokens !== undefined
+      ? {
+          cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
+          cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
+          inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
+          isApproximate: hasAnyExplicit ? false : (baseTokens?.isApproximate ?? false),
+          outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
+        }
+      : undefined;
 
   // Prefer ctx.triggerRef (correctly set for inline runs including issue vs PR distinction).
   // Fall back to buildTriggerRef only for companion workflow_run mode where ctx.triggerRef is null.
