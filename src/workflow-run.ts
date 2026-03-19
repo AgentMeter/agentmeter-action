@@ -299,7 +299,8 @@ async function resolveTrigger({
     try {
       const { data: prs } = await octokit.rest.pulls.list({
         direction: 'desc',
-        head: `${owner}:${headBranch}`,
+        // Omit owner prefix so forked PRs are also matched (fork owner differs from base owner)
+        head: headBranch,
         owner,
         per_page: 1,
         repo,
@@ -434,7 +435,8 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
       return null;
     }
     return {
-      cache_read_tokens: typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
+      cache_read_tokens:
+        typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
       cache_write_tokens:
         typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
       input_tokens: parsed.input_tokens,
