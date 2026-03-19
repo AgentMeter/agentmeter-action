@@ -71,9 +71,7 @@ export async function fetchPricing({
         cacheReadPer1M: entry.cacheReadPerMillionTokens ?? 0,
       };
     }
-    core.info(
-      `AgentMeter: fetched pricing for ${Object.keys(result).length} models: ${Object.keys(result).join(', ')}`
-    );
+    core.info(`AgentMeter: fetched pricing for ${Object.keys(result).length} models.`);
     return result;
   } catch (error) {
     core.info(`AgentMeter: could not fetch pricing from API (${error}) — cost will show as —.`);
