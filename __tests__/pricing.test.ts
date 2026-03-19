@@ -153,14 +153,8 @@ describe('getPricing', () => {
     expect(result?.inputPer1M).toBe(3);
   });
 
-  it('falls back to prefix table when model not in API response', () => {
+  it('returns null when model is not in API response', () => {
     const result = getPricing({ apiPricing: {}, model: 'claude-sonnet-4-99' });
-    expect(result?.inputPer1M).toBe(3);
-    expect(result?.outputPer1M).toBe(15);
-  });
-
-  it('returns null for unknown model', () => {
-    const result = getPricing({ apiPricing: {}, model: 'unknown-model-xyz' });
     expect(result).toBeNull();
   });
 
