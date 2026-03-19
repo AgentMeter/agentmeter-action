@@ -1,6 +1,6 @@
 # AgentMeter Action
 
-Track token usage and cost for AI agent runs in GitHub Actions. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
+Visibility into what your AI agents actually cost. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
 
 [![CI](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml)
 
@@ -8,10 +8,12 @@ Track token usage and cost for AI agent runs in GitHub Actions. Works with **Cla
 
 ## What it does
 
+[GitHub Agentic Workflows](https://github.github.com/gh-aw/) let AI agents implement issues, review PRs, and respond to comments autonomously — but every agent run consumes tokens and costs money. AgentMeter tracks that spend so you're never surprised.
+
 Add this action after your AI agent step to:
 
-1. Extract token usage and cost from the agent's output
-2. Submit run metadata to the [AgentMeter](https://agentmeter.app) ingest API
+1. Record token usage, model, duration, and status for each agent run
+2. Submit the data to the [AgentMeter](https://agentmeter.app) dashboard
 3. Post or update a cost summary comment on the triggering PR or issue
 
 The action **never fails your workflow** — all API calls and comment posts use `core.warning()` for errors, not `core.setFailed()`.
@@ -79,30 +81,41 @@ steps:
 
 ```yaml
 steps:
-  - name: Record start time
-    id: timer
-    run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
   - uses: openai/codex-action@v1
     id: codex
     with:
       openai-api-key: ${{ secrets.OPENAI_API_KEY }}
       prompt: "Review this PR for correctness and style"
       model: gpt-5.4-mini
-      codex-home: /tmp/codex-home
+
+  - uses: foo-software/agentmeter-action@main
+    if: always()
+    with:
+      api_key: ${{ secrets.AGENTMETER_API_KEY }}
+      engine: codex
+      model: gpt-5.4-mini
+      status: ${{ job.status == 'success' && 'success' || 'failed' }}
+```
+
+This records the run with status and duration. Cost will show as `—` because `openai/codex-action` doesn't expose token counts as step outputs.
+
+**To get per-run cost**, add a token extraction step before AgentMeter. Set `codex-home` so the rollout file path is predictable, then parse it:
+
+```yaml
+  - uses: openai/codex-action@v1
+    id: codex
+    with:
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+      prompt: "Review this PR for correctness and style"
+      model: gpt-5.4-mini
+      codex-home: /tmp/codex-home   # required for token extraction
 
   - name: Extract Codex token usage
     id: codex-tokens
     if: always()
     run: |
       rollout=$(find /tmp/codex-home/sessions -name "rollout-*.jsonl" 2>/dev/null -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
-      if [ -z "$rollout" ]; then
-        echo "input_tokens=" >> "$GITHUB_OUTPUT"
-        echo "output_tokens=" >> "$GITHUB_OUTPUT"
-        echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
-        exit 0
-      fi
-      token_line=$(grep '"token_count"' "$rollout" | tail -1)
+      token_line=$(grep '"token_count"' "$rollout" 2>/dev/null | tail -1)
       echo "input_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.input_tokens // empty')" >> "$GITHUB_OUTPUT"
       echo "output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')" >> "$GITHUB_OUTPUT"
       echo "cache_read_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.cached_input_tokens // empty')" >> "$GITHUB_OUTPUT"
@@ -114,13 +127,12 @@ steps:
       engine: codex
       model: gpt-5.4-mini
       status: ${{ job.status == 'success' && 'success' || 'failed' }}
-      started_at: ${{ steps.timer.outputs.started_at }}
       input_tokens: ${{ steps.codex-tokens.outputs.input_tokens }}
       output_tokens: ${{ steps.codex-tokens.outputs.output_tokens }}
       cache_read_tokens: ${{ steps.codex-tokens.outputs.cache_read_tokens }}
 ```
 
-> **Note:** Codex token extraction reads from an internal rollout file format. See [docs/challenges.md](docs/challenges.md#6-codex-token-counts-rely-on-an-internal-rollout-file-format) for caveats.
+> **Note:** Token extraction reads an internal Codex rollout file — not a public API. See [docs/challenges.md](docs/challenges.md#6-codex-token-counts-rely-on-an-internal-rollout-file-format) for caveats.
 
 ### Status tracking only (no token counts)
 
@@ -197,7 +209,7 @@ When `workflow_run_id` is set the action internally:
 
 ### Token data in gh-aw lock files
 
-The action reads token counts from an `agent-tokens` artifact that your `agent` job must upload. Add these two steps to your `.lock.yml` after the agent execution step:
+The action reads token counts from an `agent-tokens` artifact uploaded by the agent job. You need to add these two steps to your `.lock.yml` after the agent execution step. They must be re-added any time you recompile with `gh aw compile` (since compilation regenerates the lock file):
 
 ```yaml
 - name: Extract Claude token usage
