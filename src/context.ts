@@ -40,8 +40,13 @@ export function mapEventToTriggerType(eventName: string, payload: WebhookPayload
     if (payload.action === 'synchronize') return 'pr_synchronize';
     return 'other';
   }
-  if (eventName === 'issue_comment' || eventName === 'pull_request_review_comment') {
+  if (eventName === 'pull_request_review_comment') {
     return 'pr_comment';
+  }
+  if (eventName === 'issue_comment') {
+    // issue_comment fires on both PRs and plain issues — distinguish via pull_request presence
+    const isPR = !!payload.issue?.pull_request;
+    return isPR ? 'pr_comment' : 'issue_comment';
   }
   if (eventName === 'schedule') return 'schedule';
   if (eventName === 'workflow_dispatch') return 'workflow_dispatch';

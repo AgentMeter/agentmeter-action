@@ -15,6 +15,10 @@ export interface WorkflowRunData {
   triggerNumber: number | null;
   /** Event name of the triggering run (pull_request, issues, etc.) */
   triggerEvent: string;
+  /** Normalized AgentMeter trigger type (pr_comment, pull_request, issues, etc.) */
+  triggerType: string;
+  /** Human-readable trigger ref (e.g. "PR #42", "#7") resolved from the triggering run */
+  triggerRef: string | null;
   /** Token counts extracted from the agent-tokens artifact, if available */
   tokens: TokenCountsWithMeta | undefined;
   /**
@@ -82,7 +86,7 @@ export async function resolveWorkflowRun({
   const startedAt = run?.run_started_at ?? new Date().toISOString();
   const completedAt = run?.updated_at ?? new Date().toISOString();
 
-  const { triggerNumber, triggerEvent } = await resolveTrigger({
+  const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
     headBranch: run?.head_branch ?? '',
     event: run?.event ?? '',
@@ -98,6 +102,8 @@ export async function resolveWorkflowRun({
     completedAt,
     triggerNumber,
     triggerEvent,
+    triggerType,
+    triggerRef,
     tokens,
     shouldProceed: true,
     normalizedStatus,
@@ -106,10 +112,11 @@ export async function resolveWorkflowRun({
 }
 
 /**
- * Maps a raw workflow_run conclusion to a valid AgentMeter API status value.
+ * Maps a raw GitHub step/workflow conclusion to a valid AgentMeter API status value.
  * Returns 'skip' for conclusions that should not be tracked.
+ * GitHub step outcomes use 'failure'; the API expects 'failed'.
  */
-function normalizeConclusion(conclusion: string): string {
+export function normalizeConclusion(conclusion: string): string {
   const map: Record<string, string> = {
     success: 'success',
     failure: 'failed',
@@ -117,7 +124,9 @@ function normalizeConclusion(conclusion: string): string {
     cancelled: 'cancelled',
     skipped: 'skip',
   };
-  return map[conclusion] ?? 'failed';
+  // Preserve unrecognized values as-is so custom statuses (e.g. 'needs_human') are not
+  // silently replaced with 'failed'. Only normalize the known GitHub conclusion strings.
+  return map[conclusion] ?? conclusion;
 }
 
 /**
@@ -138,6 +147,8 @@ function emptyResult({
     completedAt: now,
     triggerNumber: null,
     triggerEvent: '',
+    triggerType: 'other',
+    triggerRef: null,
     tokens: undefined,
     shouldProceed,
     normalizedStatus,
@@ -184,10 +195,11 @@ async function checkConclusionJobCompleted({
     core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
     return true;
   } catch (error) {
-    // If the API call fails (e.g. non-gh-aw workflow with no conclusion job),
-    // proceed anyway — the gate is a best-effort dedup, not a hard requirement.
-    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Proceeding.`);
-    return true;
+    // Fail closed on API errors — proceeding on a failed gate check risks double-ingest.
+    // A missing conclusion job (non-gh-aw workflow) is handled above as a successful
+    // API call that returns no matching job, not as an exception.
+    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Skipping.`);
+    return false;
   }
 }
 
@@ -262,27 +274,46 @@ async function resolveTrigger({
   pullRequests: Array<{ number: number }>;
   /** Repository name */
   repo: string;
-}): Promise<{ triggerNumber: number | null; triggerEvent: string }> {
+}): Promise<{
+  triggerNumber: number | null;
+  triggerEvent: string;
+  triggerType: string;
+  triggerRef: string | null;
+}> {
   if (pullRequests.length > 0 && pullRequests[0]) {
+    const num = pullRequests[0].number;
     return {
-      triggerNumber: pullRequests[0].number,
-      triggerEvent: 'pull_request',
+      triggerNumber: num,
+      triggerEvent: event,
+      triggerType: normalizeTriggerType({ event, isPR: true }),
+      triggerRef: `PR #${num}`,
     };
   }
 
-  // GitHub frequently leaves pull_requests[] empty for workflow_run events even
-  // when the triggering workflow ran on a PR. Look up open PRs by head branch.
-  if (event === 'pull_request' && headBranch) {
+  // GitHub frequently leaves pull_requests[] empty for workflow_run events even when the
+  // triggering workflow ran on a PR. Also covers issue_comment / pull_request_review_comment
+  // triggered workflows. Use state: 'all' + sort by updated so we find recently-merged PRs
+  // in case the companion workflow fires after the PR closes; most-recently-updated PR wins.
+  const prLikeEvents = new Set(['issue_comment', 'pull_request', 'pull_request_review_comment']);
+  if (prLikeEvents.has(event) && headBranch) {
     try {
       const { data: prs } = await octokit.rest.pulls.list({
+        direction: 'desc',
+        // Omit owner prefix so forked PRs are also matched (fork owner differs from base owner)
+        head: headBranch,
         owner,
-        repo,
-        head: `${owner}:${headBranch}`,
         per_page: 1,
-        state: 'open',
+        repo,
+        sort: 'updated',
+        state: 'all',
       });
       if (prs[0]) {
-        return { triggerNumber: prs[0].number, triggerEvent: 'pull_request' };
+        return {
+          triggerNumber: prs[0].number,
+          triggerEvent: event,
+          triggerType: normalizeTriggerType({ event, isPR: true }),
+          triggerRef: `PR #${prs[0].number}`,
+        };
       }
     } catch (error) {
       core.warning(`AgentMeter: could not look up PR for branch ${headBranch}: ${error}`);
@@ -292,13 +323,41 @@ async function resolveTrigger({
   // gh-aw issue branches are named agent/issue-N
   const issueMatch = headBranch.match(/issue[/-](\d+)/i);
   if (issueMatch?.[1]) {
+    const num = parseInt(issueMatch[1], 10);
     return {
-      triggerNumber: parseInt(issueMatch[1], 10),
+      triggerNumber: num,
       triggerEvent: 'issues',
+      triggerType: 'issues',
+      triggerRef: `#${num}`,
     };
   }
 
-  return { triggerNumber: null, triggerEvent: event || '' };
+  return {
+    triggerNumber: null,
+    triggerEvent: event || '',
+    triggerType: event || 'other',
+    triggerRef: null,
+  };
+}
+
+/**
+ * Maps a raw GitHub event name to a normalized AgentMeter trigger type for companion
+ * workflow_run mode, where the full payload is unavailable. Uses isPR to distinguish
+ * issue_comment on a PR from issue_comment on a plain issue.
+ */
+function normalizeTriggerType({
+  event,
+  isPR,
+}: {
+  /** Raw GitHub event name */
+  event: string;
+  /** Whether the run was associated with a PR */
+  isPR: boolean;
+}): string {
+  if (event === 'issue_comment' || event === 'pull_request_review_comment') {
+    return isPR ? 'pr_comment' : 'issue_comment';
+  }
+  return event || 'other';
 }
 
 /**
@@ -376,12 +435,12 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
       return null;
     }
     return {
-      input_tokens: parsed.input_tokens,
-      output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
       cache_read_tokens:
         typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
       cache_write_tokens:
         typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
+      input_tokens: parsed.input_tokens,
+      output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);

@@ -228,7 +228,53 @@ describe('resolveWorkflowRun', () => {
     });
   });
 
-  it('proceeds when listJobsForWorkflowRun fails (non-gh-aw workflow)', async () => {
+  it('defaults output_tokens to 0 when missing from artifact', async () => {
+    const zip = makeTokenZip(
+      '{"input_tokens":1000,"cache_read_tokens":500,"cache_write_tokens":100}'
+    );
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.outputTokens).toBe(0);
+  });
+
+  it('defaults cache_read_tokens to 0 when missing from artifact', async () => {
+    const zip = makeTokenZip('{"input_tokens":1000,"output_tokens":200,"cache_write_tokens":100}');
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.cacheReadTokens).toBe(0);
+  });
+
+  it('defaults cache_write_tokens to 0 when non-numeric in artifact', async () => {
+    const zip = makeTokenZip(
+      '{"input_tokens":1000,"output_tokens":200,"cache_read_tokens":500,"cache_write_tokens":"bad"}'
+    );
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.cacheWriteTokens).toBe(0);
+  });
+
+  it('skips when listJobsForWorkflowRun fails (fail closed to prevent double-ingest)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -237,7 +283,7 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.shouldProceed).toBe(true);
+    expect(result.shouldProceed).toBe(false);
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')
     );

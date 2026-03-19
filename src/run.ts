@@ -6,7 +6,7 @@ import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
 import { fetchPricing } from './pricing';
 import { resolveTokens } from './token-extractor';
-import { resolveWorkflowRun } from './workflow-run';
+import { normalizeConclusion, resolveWorkflowRun } from './workflow-run';
 
 /**
  * Builds a human-readable trigger ref string from a number and event name.
@@ -51,6 +51,8 @@ export async function run(): Promise<void> {
   let workflowRunTokens: ReturnType<typeof resolveTokens>;
   let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
+  let resolvedTriggerRef: string | null = null;
+  let resolvedTriggerType: string | null = null;
   let resolvedStartedAt = inputs.startedAt || selfStartedAt;
   let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
   let resolvedWorkflowName = ctx.workflowName;
@@ -82,43 +84,60 @@ export async function run(): Promise<void> {
       if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
+      resolvedTriggerRef = runData.triggerRef;
+      resolvedTriggerType = runData.triggerType;
       if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
     }
   }
 
   // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction.
-  // Split into two resolveTokens calls so the artifact wins over stdout extraction.
+  // Merge per-field so a partial explicit override (e.g. only input_tokens) still falls back to
+  // the artifact or extracted value for the fields that were not explicitly provided.
+  const extractedTokens = resolveTokens({
+    agentOutput: inputs.agentOutput,
+    cacheReadTokensOverride: null,
+    cacheWriteTokensOverride: null,
+    inputTokensOverride: null,
+    outputTokensOverride: null,
+  });
+  const baseTokens = workflowRunTokens ?? extractedTokens;
+  const hasAnyExplicit =
+    inputs.inputTokens !== null ||
+    inputs.outputTokens !== null ||
+    inputs.cacheReadTokens !== null ||
+    inputs.cacheWriteTokens !== null;
   const tokens =
-    resolveTokens({
-      agentOutput: '',
-      inputTokensOverride: inputs.inputTokens,
-      outputTokensOverride: inputs.outputTokens,
-      cacheReadTokensOverride: inputs.cacheReadTokens,
-      cacheWriteTokensOverride: inputs.cacheWriteTokens,
-    }) ??
-    workflowRunTokens ??
-    resolveTokens({
-      agentOutput: inputs.agentOutput,
-      inputTokensOverride: null,
-      outputTokensOverride: null,
-      cacheReadTokensOverride: null,
-      cacheWriteTokensOverride: null,
-    });
+    hasAnyExplicit || baseTokens !== undefined
+      ? {
+          cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
+          cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
+          inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
+          isApproximate: baseTokens?.isApproximate ?? false,
+          outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
+        }
+      : undefined;
 
-  // Prefer ctx.triggerRef (correctly set for inline runs including issue vs PR distinction).
-  // Fall back to buildTriggerRef only for companion workflow_run mode where ctx.triggerRef is null.
+  // Prefer ctx.triggerRef (inline runs — context.ts already resolved PR vs issue correctly).
+  // Fall back to resolvedTriggerRef from resolveTrigger (companion workflow_run mode — it knows
+  // whether a PR was found regardless of the triggering event name, e.g. issue_comment on a PR).
+  // Last resort: buildTriggerRef from the event name and number.
   const triggerRef =
     ctx.triggerRef ??
+    resolvedTriggerRef ??
     (resolvedTriggerNumber !== null
       ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
       : null);
 
-  const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
+  // resolvedTriggerType is only set in companion workflow_run mode (from resolveTrigger).
+  // ctx.triggerType reflects the companion workflow's own event (workflow_run → 'other'), so
+  // prefer the resolved type from the triggering run when available.
+  const triggerType = resolvedTriggerType || ctx.triggerType || resolvedTriggerEvent || 'other';
 
-  const durationSeconds = Math.round(
-    (new Date(resolvedCompletedAt).getTime() - new Date(resolvedStartedAt).getTime()) / 1000
-  );
+  const startMs = new Date(resolvedStartedAt).getTime();
+  const endMs = new Date(resolvedCompletedAt).getTime();
+  const durationSeconds =
+    Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.round((endMs - startMs) / 1000) : 0;
 
   const result = await submitRun({
     apiKey: inputs.apiKey,
@@ -132,7 +151,7 @@ export async function run(): Promise<void> {
       triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
       model: inputs.model,
-      status: inputs.status,
+      status: normalizeConclusion(inputs.status),
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: inputs.turns,
@@ -161,7 +180,7 @@ export async function run(): Promise<void> {
         issueOrPrNumber: resolvedTriggerNumber,
         runData: {
           workflowName: resolvedWorkflowName,
-          status: inputs.status,
+          status: normalizeConclusion(inputs.status),
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,

@@ -28,8 +28,14 @@ describe('mapEventToTriggerType', () => {
     expect(mapEventToTriggerType('pull_request', payload)).toBe('other');
   });
 
-  it('returns pr_comment for issue_comment event', () => {
-    expect(mapEventToTriggerType('issue_comment', {})).toBe('pr_comment');
+  it('returns pr_comment for issue_comment on a PR', () => {
+    const payload = { issue: { number: 5, pull_request: { url: 'x' } } } as WebhookPayload;
+    expect(mapEventToTriggerType('issue_comment', payload)).toBe('pr_comment');
+  });
+
+  it('returns issue_comment for issue_comment on a plain issue', () => {
+    const payload = { issue: { number: 5 } } as WebhookPayload;
+    expect(mapEventToTriggerType('issue_comment', payload)).toBe('issue_comment');
   });
 
   it('returns pr_comment for pull_request_review_comment event', () => {
