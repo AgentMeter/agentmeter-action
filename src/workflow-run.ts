@@ -15,6 +15,8 @@ export interface WorkflowRunData {
   triggerNumber: number | null;
   /** Event name of the triggering run (pull_request, issues, etc.) */
   triggerEvent: string;
+  /** Normalized AgentMeter trigger type (pr_comment, pull_request, issues, etc.) */
+  triggerType: string;
   /** Human-readable trigger ref (e.g. "PR #42", "#7") resolved from the triggering run */
   triggerRef: string | null;
   /** Token counts extracted from the agent-tokens artifact, if available */
@@ -84,7 +86,7 @@ export async function resolveWorkflowRun({
   const startedAt = run?.run_started_at ?? new Date().toISOString();
   const completedAt = run?.updated_at ?? new Date().toISOString();
 
-  const { triggerNumber, triggerEvent, triggerRef } = await resolveTrigger({
+  const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
     headBranch: run?.head_branch ?? '',
     event: run?.event ?? '',
@@ -100,6 +102,7 @@ export async function resolveWorkflowRun({
     completedAt,
     triggerNumber,
     triggerEvent,
+    triggerType,
     triggerRef,
     tokens,
     shouldProceed: true,
@@ -142,6 +145,7 @@ function emptyResult({
     completedAt: now,
     triggerNumber: null,
     triggerEvent: '',
+    triggerType: 'other',
     triggerRef: null,
     tokens: undefined,
     shouldProceed,
@@ -268,12 +272,18 @@ async function resolveTrigger({
   pullRequests: Array<{ number: number }>;
   /** Repository name */
   repo: string;
-}): Promise<{ triggerNumber: number | null; triggerEvent: string; triggerRef: string | null }> {
+}): Promise<{
+  triggerNumber: number | null;
+  triggerEvent: string;
+  triggerType: string;
+  triggerRef: string | null;
+}> {
   if (pullRequests.length > 0 && pullRequests[0]) {
     const num = pullRequests[0].number;
     return {
       triggerNumber: num,
       triggerEvent: event,
+      triggerType: normalizeTriggerType({ event, isPR: true }),
       triggerRef: `PR #${num}`,
     };
   }
@@ -298,6 +308,7 @@ async function resolveTrigger({
         return {
           triggerNumber: prs[0].number,
           triggerEvent: event,
+          triggerType: normalizeTriggerType({ event, isPR: true }),
           triggerRef: `PR #${prs[0].number}`,
         };
       }
@@ -313,11 +324,37 @@ async function resolveTrigger({
     return {
       triggerNumber: num,
       triggerEvent: 'issues',
+      triggerType: 'issues',
       triggerRef: `#${num}`,
     };
   }
 
-  return { triggerNumber: null, triggerEvent: event || '', triggerRef: null };
+  return {
+    triggerNumber: null,
+    triggerEvent: event || '',
+    triggerType: event || 'other',
+    triggerRef: null,
+  };
+}
+
+/**
+ * Maps a raw GitHub event name to a normalized AgentMeter trigger type for companion
+ * workflow_run mode, where the full payload is unavailable. Uses isPR to distinguish
+ * issue_comment on a PR from issue_comment on a plain issue.
+ */
+function normalizeTriggerType({
+  event,
+  isPR,
+}: {
+  /** Raw GitHub event name */
+  event: string;
+  /** Whether the run was associated with a PR */
+  isPR: boolean;
+}): string {
+  if (event === 'issue_comment' || event === 'pull_request_review_comment') {
+    return isPR ? 'pr_comment' : 'issue_comment';
+  }
+  return event || 'other';
 }
 
 /**

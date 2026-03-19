@@ -95,5 +95,11 @@ export function getPricing({
   if (!model) return null;
   const lower = model.toLowerCase();
   const exact = apiPricing[lower];
-  return exact ?? null;
+  if (exact) return exact;
+  // Prefix fallback: versioned/aliased model IDs like "gpt-5.4-mini-2025-04-01" should match
+  // "gpt-5.4-mini" in the pricing table. Pick the longest matching prefix to be most specific.
+  const prefixMatch = Object.keys(apiPricing)
+    .filter((key) => lower.startsWith(key))
+    .sort((a, b) => b.length - a.length)[0];
+  return prefixMatch ? (apiPricing[prefixMatch] ?? null) : null;
 }

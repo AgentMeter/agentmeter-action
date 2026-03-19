@@ -52,6 +52,7 @@ export async function run(): Promise<void> {
   let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedTriggerRef: string | null = null;
+  let resolvedTriggerType: string | null = null;
   let resolvedStartedAt = inputs.startedAt || selfStartedAt;
   let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
   let resolvedWorkflowName = ctx.workflowName;
@@ -84,6 +85,7 @@ export async function run(): Promise<void> {
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
+      resolvedTriggerType = runData.triggerType;
       if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
     }
@@ -127,7 +129,7 @@ export async function run(): Promise<void> {
       ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
       : null);
 
-  const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
+  const triggerType = ctx.triggerType || resolvedTriggerType || resolvedTriggerEvent || 'other';
 
   const startMs = new Date(resolvedStartedAt).getTime();
   const endMs = new Date(resolvedCompletedAt).getTime();

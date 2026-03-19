@@ -158,6 +158,28 @@ describe('getPricing', () => {
     expect(result).toBeNull();
   });
 
+  it('returns prefix match for versioned model ID not in table', () => {
+    const result = getPricing({ apiPricing, model: 'claude-sonnet-4-5-20250514' });
+    expect(result?.inputPer1M).toBe(3);
+  });
+
+  it('picks the longest prefix when multiple prefixes match', () => {
+    const extendedPricing = {
+      ...apiPricing,
+      'claude-sonnet-4-5-preview': {
+        inputPer1M: 99,
+        outputPer1M: 99,
+        cacheWritePer1M: 0,
+        cacheReadPer1M: 0,
+      },
+    };
+    const result = getPricing({
+      apiPricing: extendedPricing,
+      model: 'claude-sonnet-4-5-preview-2025',
+    });
+    expect(result?.inputPer1M).toBe(99);
+  });
+
   it('returns null when model is null', () => {
     const result = getPricing({ apiPricing, model: null });
     expect(result).toBeNull();
