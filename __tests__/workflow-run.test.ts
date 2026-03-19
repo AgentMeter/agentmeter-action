@@ -228,7 +228,7 @@ describe('resolveWorkflowRun', () => {
     });
   });
 
-  it('returns null tokens when output_tokens is missing from artifact', async () => {
+  it('defaults output_tokens to 0 when missing from artifact', async () => {
     const zip = makeTokenZip(
       '{"input_tokens":1000,"cache_read_tokens":500,"cache_write_tokens":100}'
     );
@@ -240,13 +240,11 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.tokens).toBeUndefined();
-    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
-      expect.stringContaining('unexpected structure')
-    );
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.outputTokens).toBe(0);
   });
 
-  it('returns null tokens when cache_read_tokens is missing from artifact', async () => {
+  it('defaults cache_read_tokens to 0 when missing from artifact', async () => {
     const zip = makeTokenZip('{"input_tokens":1000,"output_tokens":200,"cache_write_tokens":100}');
     const octokit = makeOctokit({
       artifacts: [{ name: 'agent-tokens', id: 999 }],
@@ -256,13 +254,11 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.tokens).toBeUndefined();
-    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
-      expect.stringContaining('unexpected structure')
-    );
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.cacheReadTokens).toBe(0);
   });
 
-  it('returns null tokens when cache_write_tokens is a non-numeric value', async () => {
+  it('defaults cache_write_tokens to 0 when non-numeric in artifact', async () => {
     const zip = makeTokenZip(
       '{"input_tokens":1000,"output_tokens":200,"cache_read_tokens":500,"cache_write_tokens":"bad"}'
     );
@@ -274,10 +270,8 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.tokens).toBeUndefined();
-    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
-      expect.stringContaining('unexpected structure')
-    );
+    expect(result.tokens?.inputTokens).toBe(1000);
+    expect(result.tokens?.cacheWriteTokens).toBe(0);
   });
 
   it('skips when listJobsForWorkflowRun fails (fail closed to prevent double-ingest)', async () => {

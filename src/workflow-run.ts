@@ -124,7 +124,9 @@ export function normalizeConclusion(conclusion: string): string {
     cancelled: 'cancelled',
     skipped: 'skip',
   };
-  return map[conclusion] ?? 'failed';
+  // Preserve unrecognized values as-is so custom statuses (e.g. 'needs_human') are not
+  // silently replaced with 'failed'. Only normalize the known GitHub conclusion strings.
+  return map[conclusion] ?? conclusion;
 }
 
 /**
@@ -427,20 +429,16 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
       return null;
     }
     const parsed = JSON.parse(new TextDecoder().decode(file)) as AgentTokensArtifact;
-    if (
-      typeof parsed.input_tokens !== 'number' ||
-      typeof parsed.output_tokens !== 'number' ||
-      typeof parsed.cache_read_tokens !== 'number' ||
-      typeof parsed.cache_write_tokens !== 'number'
-    ) {
+    if (typeof parsed.input_tokens !== 'number') {
       core.warning('AgentMeter: agent-tokens artifact has unexpected structure.');
       return null;
     }
     return {
-      cache_read_tokens: parsed.cache_read_tokens,
-      cache_write_tokens: parsed.cache_write_tokens,
+      cache_read_tokens: typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
+      cache_write_tokens:
+        typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
       input_tokens: parsed.input_tokens,
-      output_tokens: parsed.output_tokens,
+      output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);

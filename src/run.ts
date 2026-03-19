@@ -129,7 +129,10 @@ export async function run(): Promise<void> {
       ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
       : null);
 
-  const triggerType = ctx.triggerType || resolvedTriggerType || resolvedTriggerEvent || 'other';
+  // resolvedTriggerType is only set in companion workflow_run mode (from resolveTrigger).
+  // ctx.triggerType reflects the companion workflow's own event (workflow_run → 'other'), so
+  // prefer the resolved type from the triggering run when available.
+  const triggerType = resolvedTriggerType || ctx.triggerType || resolvedTriggerEvent || 'other';
 
   const startMs = new Date(resolvedStartedAt).getTime();
   const endMs = new Date(resolvedCompletedAt).getTime();
