@@ -54,13 +54,19 @@ const TABLE_HEADER = [
 
 const VISIBLE_RUNS_LIMIT = 5;
 
+/** Minimal run fields needed to render a table row */
+type RunRow = Pick<
+  RunCommentData,
+  'durationSeconds' | 'model' | 'status' | 'totalCostCents' | 'workflowName'
+>;
+
 /** Builds table row strings for a slice of runs, numbered from startIndex. */
 function buildTableRows({
   runs,
   startIndex,
 }: {
   /** Runs to render */
-  runs: Array<Pick<RunCommentData, 'durationSeconds' | 'model' | 'status' | 'totalCostCents' | 'workflowName'>>;
+  runs: RunRow[];
   /** 1-based row number for the first run */
   startIndex: number;
 }): string[] {
@@ -90,7 +96,7 @@ export function buildCommentBody({
 }): string {
   const existingRuns = existingBody ? parseExistingRuns(existingBody) : [];
   // Newest first: current run at the top
-  const allRuns: Array<Pick<RunCommentData, 'durationSeconds' | 'model' | 'status' | 'totalCostCents' | 'workflowName'>> = [runData, ...existingRuns];
+  const allRuns: RunRow[] = [runData, ...existingRuns];
 
   const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
   const totalRow =
@@ -121,7 +127,7 @@ export function buildCommentBody({
       ...(totalRow ? [totalRow] : []),
       '',
       '</details>',
-      '',
+      ''
     );
   }
 
@@ -264,7 +270,7 @@ function parseExistingRuns(body: string): ParsedRun[] {
   try {
     // When >5 runs exist the full history lives in the collapsible — prefer that
     const detailsMatch = body.match(
-      /<summary>All \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/,
+      /<summary>All \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
     );
     if (detailsMatch?.[1]) {
       const tableMatch = detailsMatch[1].match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);
@@ -296,9 +302,8 @@ async function findExistingComment({
   issueOrPrNumber: number;
 }): Promise<{ id: number; body: string } | null> {
   try {
-    const { data: comments } = await (
-      octokit as ReturnType<typeof import('@actions/github').getOctokit>
-    ).rest.issues.listComments({
+    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
+    const comments = await gh.paginate(gh.rest.issues.listComments, {
       owner,
       repo,
       issue_number: issueOrPrNumber,

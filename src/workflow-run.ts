@@ -278,7 +278,7 @@ async function resolveTrigger({
         owner,
         repo,
         head: `${owner}:${headBranch}`,
-        state: 'open',
+        state: 'all',
         per_page: 1,
       });
       if (prs[0]) {
@@ -375,7 +375,14 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
       core.warning('AgentMeter: agent-tokens artifact has unexpected structure.');
       return null;
     }
-    return parsed;
+    return {
+      input_tokens: parsed.input_tokens,
+      output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
+      cache_read_tokens:
+        typeof parsed.cache_read_tokens === 'number' ? parsed.cache_read_tokens : 0,
+      cache_write_tokens:
+        typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
+    };
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);
     return null;
