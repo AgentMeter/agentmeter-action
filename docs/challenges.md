@@ -94,6 +94,48 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 
 ---
 
+### 6. Codex token counts rely on an internal rollout file format
+
+`codex exec` (via `openai/codex-action`) does not expose token usage through any documented public API. However, when running without `--ephemeral`, the Codex CLI writes a rollout JSONL file to:
+
+```
+$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
+```
+
+Each line is a JSON event. Token totals appear in `token_count` events:
+
+```json
+{
+  "type": "event_msg",
+  "payload": {
+    "type": "token_count",
+    "info": {
+      "total_token_usage": {
+        "input_tokens": 479565,
+        "output_tokens": 7489,
+        "cached_input_tokens": 444416
+      }
+    },
+    "rate_limits": null
+  }
+}
+```
+
+The last `token_count` event in the file contains cumulative totals for the full run.
+
+**How the workflow extracts tokens:**
+
+1. Set `codex-home: /tmp/codex-home` on `openai/codex-action` so the rollout path is known
+2. After the codex step, find the latest rollout file with `find /tmp/codex-home/sessions -name "rollout-*.jsonl" | sort | tail -1`
+3. Grep for `"token_count"`, take the last line, extract fields with `jq`
+4. Pass `input_tokens`, `output_tokens`, `cache_read_tokens` as explicit inputs to the AgentMeter step
+
+**Stability caveat:** The rollout format is an internal Codex CLI implementation detail, not a versioned public API. A future `@openai/codex` release could rename fields or restructure events. Since `codex-version` in `openai/codex-action` defaults to latest, this could silently break on a CLI upgrade. Failure is graceful — costs show as `—` if the rollout file is missing or unparseable.
+
+**Alternative path (`codex exec --json`):** Running with `--json` writes JSONL to stdout with `turn.completed` events containing a `usage` field. However, `openai/codex-action`'s `final-message` output reads from the output file, not stdout — so the JSONL stream is not accessible from within the action's step outputs. The `tryExtractFromCodexExecJsonl` function in `token-extractor.ts` handles this format for consumers who capture `codex exec --json` stdout directly.
+
+---
+
 ## What works regardless of mode
 
 - The action **never fails the workflow** — all errors are `core.warning()`, not `core.setFailed()`.
@@ -123,4 +165,5 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 | Comment posting | ✅ | Upsert by marker, correct PR/issue number |
 | `GITHUB_TOKEN` availability | ✅ | `github_token` input with `default: ${{ github.token }}` |
 | Node.js version | ✅ | node24 |
-| Pricing table | ✅ | Fetched from `/api/models/pricing`; built-in prefix fallback |
+| Pricing table | ✅ | Fetched from `/api/models/pricing`; shows `—` if unreachable |
+| Codex token counts | ✅ with caveat | Parsed from rollout JSONL at `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`. Works in production. Rollout format is internal (not a public API) — see section 6 below. |

@@ -1,4 +1,10 @@
-import type { ClaudeCodeOutput, CodexTokenEvent, TokenCounts, TokenCountsWithMeta } from './types';
+import type {
+  ClaudeCodeOutput,
+  CodexExecTurnCompleted,
+  CodexTokenEvent,
+  TokenCounts,
+  TokenCountsWithMeta,
+} from './types';
 
 /**
  * Attempts to extract token counts from agent stdout.
@@ -12,6 +18,9 @@ export function extractTokensFromOutput(
 
   const jsonResult = tryExtractFromJson(agentOutput);
   if (jsonResult) return jsonResult;
+
+  const codexExecResult = tryExtractFromCodexExecJsonl(agentOutput);
+  if (codexExecResult) return codexExecResult;
 
   const codexResult = tryExtractFromCodexJsonl(agentOutput);
   if (codexResult) return codexResult;
@@ -43,6 +52,57 @@ function tryExtractFromJson(
   } catch {
     return null;
   }
+}
+
+/**
+ * Tries to extract token counts from `codex exec --json` stdout.
+ * Sums `usage` fields across all `turn.completed` events.
+ *
+ * Field mapping:
+ *   input_tokens        → inputTokens
+ *   output_tokens       → outputTokens
+ *   cached_input_tokens → cacheReadTokens
+ */
+function tryExtractFromCodexExecJsonl(
+  agentOutput: string
+): { tokens: TokenCounts; isApproximate: boolean } | null {
+  const lines = agentOutput.split('\n');
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let found = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.includes('"turn.completed"')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const obj =
+        typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+      if (obj?.['type'] !== 'turn.completed') continue;
+      const usage = obj['usage'];
+      if (typeof usage !== 'object' || usage === null) continue;
+      const u = usage as CodexExecTurnCompleted['usage'];
+      inputTokens += u.input_tokens ?? 0;
+      outputTokens += u.output_tokens ?? 0;
+      cacheReadTokens += u.cached_input_tokens ?? 0;
+      found = true;
+    } catch {
+      // not valid JSON, skip line
+    }
+  }
+
+  if (!found) return null;
+
+  return {
+    tokens: {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens: 0,
+    },
+    isApproximate: false,
+  };
 }
 
 /**

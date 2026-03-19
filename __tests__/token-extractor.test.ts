@@ -130,6 +130,60 @@ describe('extractTokensFromOutput', () => {
     expect(extractTokensFromOutput(jsonlOutput)).toBeNull();
   });
 
+  it('parses codex exec --json turn.completed event', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'abc' }),
+      JSON.stringify({ type: 'turn.started' }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 24763, cached_input_tokens: 24448, output_tokens: 122 },
+      }),
+    ].join('\n');
+
+    const result = extractTokensFromOutput(jsonlOutput);
+    expect(result).not.toBeNull();
+    expect(result!.tokens.inputTokens).toBe(24763);
+    expect(result!.tokens.outputTokens).toBe(122);
+    expect(result!.tokens.cacheReadTokens).toBe(24448);
+    expect(result!.tokens.cacheWriteTokens).toBe(0);
+    expect(result!.isApproximate).toBe(false);
+  });
+
+  it('sums multiple turn.completed events across turns', () => {
+    const jsonlOutput = [
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 1000, cached_input_tokens: 800, output_tokens: 100 },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 500, cached_input_tokens: 200, output_tokens: 50 },
+      }),
+    ].join('\n');
+
+    const result = extractTokensFromOutput(jsonlOutput);
+    expect(result!.tokens.inputTokens).toBe(1500);
+    expect(result!.tokens.outputTokens).toBe(150);
+    expect(result!.tokens.cacheReadTokens).toBe(1000);
+  });
+
+  it('returns null for --json output with no turn.completed events', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'abc' }),
+      JSON.stringify({ type: 'item.started', item: { type: 'command_execution' } }),
+    ].join('\n');
+    expect(extractTokensFromOutput(jsonlOutput)).toBeNull();
+  });
+
+  it('handles missing usage fields in turn.completed gracefully', () => {
+    const jsonlOutput = JSON.stringify({ type: 'turn.completed', usage: {} });
+    const result = extractTokensFromOutput(jsonlOutput);
+    expect(result).not.toBeNull();
+    expect(result!.tokens.inputTokens).toBe(0);
+    expect(result!.tokens.outputTokens).toBe(0);
+    expect(result!.tokens.cacheReadTokens).toBe(0);
+  });
+
   it('defaults missing cache fields to zero in JSON', () => {
     const output = JSON.stringify({
       usage: { input_tokens: 100, output_tokens: 50 },

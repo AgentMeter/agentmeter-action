@@ -155,6 +155,7 @@ export interface AgentTokensArtifact {
 /**
  * A single JSONL event emitted by `codex exec` in streaming mode.
  * Token counts are found in `token_count` events.
+ * Written to the rollout JSONL file at `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`.
  */
 export interface CodexTokenEvent {
   type: 'event_msg';
@@ -170,6 +171,22 @@ export interface CodexTokenEvent {
         cached_input_tokens?: number;
       };
     };
+  };
+}
+
+/**
+ * A `turn.completed` event emitted to stdout when running `codex exec --json`.
+ * Sums all turns for total usage of a full `codex exec` run.
+ */
+export interface CodexExecTurnCompleted {
+  type: 'turn.completed';
+  usage: {
+    /** Total input tokens sent (includes cached) */
+    input_tokens?: number;
+    /** Output tokens generated */
+    output_tokens?: number;
+    /** Input tokens served from cache (subset of input_tokens) */
+    cached_input_tokens?: number;
   };
 }
 

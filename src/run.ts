@@ -10,12 +10,26 @@ import { resolveWorkflowRun } from './workflow-run';
 
 /**
  * Builds a human-readable trigger ref string from a number and event name.
+ * Covers both raw GitHub event names and the mapped triggerType values from context.ts.
  */
-function buildTriggerRef(number: number, eventName: string): string {
-  if (eventName === 'pull_request' || eventName === 'pull_request_review_comment') {
-    return `PR #${number}`;
-  }
-  return `#${number}`;
+function buildTriggerRef({
+  eventName,
+  number,
+}: {
+  /** Raw GitHub event name or mapped triggerType from context.ts */
+  eventName: string;
+  /** PR or issue number */
+  number: number;
+}): string {
+  const prEvents = new Set([
+    'pull_request',
+    'pull_request_review_comment',
+    'pr_comment',
+    'pr_opened',
+    'pr_synchronize',
+    'pr_reopened',
+  ]);
+  return prEvents.has(eventName) ? `PR #${number}` : `#${number}`;
 }
 
 /**
@@ -73,20 +87,32 @@ export async function run(): Promise<void> {
     }
   }
 
-  // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction
+  // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction.
+  // Split into two resolveTokens calls so the artifact wins over stdout extraction.
   const tokens =
     resolveTokens({
-      agentOutput: inputs.agentOutput,
+      agentOutput: '',
       inputTokensOverride: inputs.inputTokens,
       outputTokensOverride: inputs.outputTokens,
       cacheReadTokensOverride: inputs.cacheReadTokens,
       cacheWriteTokensOverride: inputs.cacheWriteTokens,
-    }) ?? workflowRunTokens;
+    }) ??
+    workflowRunTokens ??
+    resolveTokens({
+      agentOutput: inputs.agentOutput,
+      inputTokensOverride: null,
+      outputTokensOverride: null,
+      cacheReadTokensOverride: null,
+      cacheWriteTokensOverride: null,
+    });
 
+  // Prefer ctx.triggerRef (correctly set for inline runs including issue vs PR distinction).
+  // Fall back to buildTriggerRef only for companion workflow_run mode where ctx.triggerRef is null.
   const triggerRef =
-    resolvedTriggerNumber !== null
-      ? buildTriggerRef(resolvedTriggerNumber, resolvedTriggerEvent)
-      : ctx.triggerRef;
+    ctx.triggerRef ??
+    (resolvedTriggerNumber !== null
+      ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
+      : null);
 
   const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
 

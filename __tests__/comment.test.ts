@@ -196,6 +196,58 @@ describe('buildCommentBody', () => {
     expect(updatedBody).toContain('$0.01');
   });
 
+  it('shows newest run first (row #1)', () => {
+    const firstBody = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: { ...baseRun, workflowName: 'first-run' },
+    });
+    const secondBody = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: firstBody,
+      runData: { ...baseRun, workflowName: 'second-run' },
+    });
+    const rows = secondBody.match(/\| \d+ \| .+? \|/g) ?? [];
+    expect(rows[0]).toContain('second-run');
+    expect(rows[1]).toContain('first-run');
+  });
+
+  it('shows all runs inline when count is at or below the limit', () => {
+    let body: string | null = null;
+    for (let i = 0; i < 5; i++) {
+      body = buildCommentBody({
+        apiPricing: testPricing,
+        existingBody: body,
+        runData: { ...baseRun, workflowName: `run-${i}` },
+      });
+    }
+    // No "All N runs" collapsible should appear
+    expect(body).not.toContain('All 5 runs');
+    expect(body).not.toContain('All 6 runs');
+  });
+
+  it('shows only 5 most recent runs and adds collapsible when over limit', () => {
+    let body: string | null = null;
+    for (let i = 1; i <= 7; i++) {
+      body = buildCommentBody({
+        apiPricing: testPricing,
+        existingBody: body,
+        runData: { ...baseRun, workflowName: `run-${i}` },
+      });
+    }
+    // Collapsible should exist
+    expect(body).toContain('All 7 runs');
+    // Latest 5 visible in main table (runs 7, 6, 5, 4, 3)
+    const mainTableSection = body!.split('<details>')[0];
+    expect(mainTableSection).toContain('run-7');
+    expect(mainTableSection).toContain('run-3');
+    expect(mainTableSection).not.toContain('run-2');
+    expect(mainTableSection).not.toContain('run-1');
+    // All runs present inside collapsible
+    expect(body).toContain('run-1');
+    expect(body).toContain('run-2');
+  });
+
   it('appends new run to existing comment and shows total', () => {
     const firstBody = buildCommentBody({
       apiPricing: testPricing,

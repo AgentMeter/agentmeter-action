@@ -47,9 +47,40 @@ function formatNumber(n: number): string {
   return n.toLocaleString('en-US');
 }
 
+const TABLE_HEADER = [
+  '| # | Workflow | Model | Status | Cost | Duration |',
+  '|---|----------|-------|--------|------|----------|',
+];
+
+const VISIBLE_RUNS_LIMIT = 5;
+
+/** Minimal run fields needed to render a table row */
+type RunRow = Pick<
+  RunCommentData,
+  'durationSeconds' | 'model' | 'status' | 'totalCostCents' | 'workflowName'
+>;
+
+/** Builds table row strings for a slice of runs, numbered from startIndex. */
+function buildTableRows({
+  runs,
+  startIndex,
+}: {
+  /** 1-based row number for the first run */
+  startIndex: number;
+  /** Runs to render */
+  runs: RunRow[];
+}): string[] {
+  return runs.map((run, i) => {
+    const icon = STATUS_EMOJI[run.status] ?? '❓';
+    return `| ${startIndex + i} | ${run.workflowName} | ${run.model ?? '—'} | ${icon} | ${formatCost(run.totalCostCents)} | ${formatDuration(run.durationSeconds)} |`;
+  });
+}
+
 /**
  * Builds the Markdown comment body for a PR/issue.
- * Parses any existing comment to extract previous run rows and append the new one.
+ * Parses any existing comment to extract previous run rows and prepends the new one.
+ * Runs are shown newest-first. If there are more than 5 runs, only the 5 most recent
+ * are shown in the main table; a collapsible section shows all runs.
  */
 export function buildCommentBody({
   apiPricing,
@@ -64,35 +95,47 @@ export function buildCommentBody({
   runData: RunCommentData;
 }): string {
   const existingRuns = existingBody ? parseExistingRuns(existingBody) : [];
-  const allRuns = [...existingRuns, runData];
-
-  const tableRows = allRuns
-    .map((run, i) => {
-      const icon = STATUS_EMOJI[run.status] ?? '❓';
-      const model = run.model ?? '—';
-      return `| ${i + 1} | ${run.workflowName} | ${model} | ${icon} | ${formatCost(run.totalCostCents)} | ${formatDuration(run.durationSeconds)} |`;
-    })
-    .join('\n');
+  // Newest first: current run at the top
+  const allRuns: RunRow[] = [runData, ...existingRuns];
 
   const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
   const totalRow =
     allRuns.length > 1 ? `| **Total** | | | | **${formatCost(totalCostCents)}** | |` : '';
 
-  const latestRun = runData;
-  const tokenDetails = buildTokenDetails({ apiPricing, run: latestRun });
+  const visibleRuns = allRuns.slice(0, VISIBLE_RUNS_LIMIT);
+  const hasMore = allRuns.length > VISIBLE_RUNS_LIMIT;
 
-  const lines = [
+  const tokenDetails = buildTokenDetails({ apiPricing, run: runData });
+
+  const lines: string[] = [
     COMMENT_MARKER,
     '## ⚡ AgentMeter',
     '',
-    '| # | Workflow | Model | Status | Cost | Duration |',
-    '|---|----------|-------|--------|------|----------|',
-    tableRows,
+    ...TABLE_HEADER,
+    ...buildTableRows({ runs: visibleRuns, startIndex: 1 }),
     ...(totalRow ? [totalRow] : []),
     '',
-    ...(tokenDetails ? [tokenDetails, ''] : []),
-    `[View in AgentMeter →](${latestRun.dashboardUrl})`,
   ];
+
+  if (hasMore) {
+    lines.push(
+      '<details>',
+      `<summary>All ${allRuns.length} runs</summary>`,
+      '',
+      ...TABLE_HEADER,
+      ...buildTableRows({ runs: allRuns, startIndex: 1 }),
+      ...(totalRow ? [totalRow] : []),
+      '',
+      '</details>',
+      ''
+    );
+  }
+
+  if (tokenDetails) {
+    lines.push(tokenDetails, '');
+  }
+
+  lines.push(`[View in AgentMeter →](${runData.dashboardUrl})`);
 
   return lines.join('\n');
 }
@@ -177,53 +220,67 @@ interface ParsedRun {
 }
 
 /**
+ * Parses raw table row strings from a Markdown table body (rows only, no header).
+ */
+function parseTableRows(rawRows: string): ParsedRun[] {
+  return rawRows
+    .trim()
+    .split('\n')
+    .filter((r) => r.startsWith('|') && !r.includes('**Total**'))
+    .map((row) => {
+      const cells = row
+        .split('|')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (cells.length < 5) return null;
+
+      // Support both old (5-col) and new (6-col) format:
+      // Old: # | Workflow | Status | Cost | Duration
+      // New: # | Workflow | Model  | Status | Cost | Duration
+      const hasModelCol = cells.length >= 6;
+      const workflowName = cells[1] ?? '';
+      const model = hasModelCol && cells[2] && cells[2] !== '—' ? cells[2] : null;
+      const statusEmoji = (hasModelCol ? cells[3] : cells[2]) ?? '';
+      const costStr = ((hasModelCol ? cells[4] : cells[3]) ?? '').replace(/[$*]/g, '');
+      const totalCostCents = Math.round(parseFloat(costStr) * 100);
+      const durationSeconds = parseDuration((hasModelCol ? cells[5] : cells[4]) ?? '');
+      const status =
+        Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
+
+      return {
+        workflowName,
+        status,
+        totalCostCents: Number.isNaN(totalCostCents) ? 0 : totalCostCents,
+        durationSeconds,
+        dashboardUrl: '',
+        model,
+        turns: null,
+      } satisfies ParsedRun;
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
+/**
  * Parses run rows out of an existing AgentMeter comment body.
- * Returns an empty array if parsing fails or comment is malformed.
+ * Prefers the "All N runs" collapsible section when present (contains the full history),
+ * falling back to the main table otherwise.
+ * Returns an empty array if parsing fails or the comment is malformed.
  */
 function parseExistingRuns(body: string): ParsedRun[] {
   try {
+    // When >5 runs exist the full history lives in the collapsible — prefer that
+    const detailsMatch = body.match(
+      /<summary>All \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
+    );
+    if (detailsMatch?.[1]) {
+      const tableMatch = detailsMatch[1].match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);
+      if (tableMatch?.[1]) return parseTableRows(tableMatch[1]);
+    }
+
+    // Fall back to the main (potentially truncated) table
     const tableMatch = body.match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);
     if (!tableMatch?.[1]) return [];
-
-    const rows = tableMatch[1]
-      .trim()
-      .split('\n')
-      .filter((r) => r.startsWith('|') && !r.includes('**Total**'));
-
-    return rows
-      .map((row) => {
-        const cells = row
-          .split('|')
-          .map((c) => c.trim())
-          .filter(Boolean);
-        if (cells.length < 5) return null;
-
-        // Support both old (5-col) and new (6-col) format:
-        // Old: # | Workflow | Status | Cost | Duration
-        // New: # | Workflow | Model  | Status | Cost | Duration
-        const hasModelCol = cells.length >= 6;
-        const workflowName = cells[1] ?? '';
-        const model = hasModelCol && cells[2] && cells[2] !== '—' ? cells[2] : null;
-        const statusEmoji = (hasModelCol ? cells[3] : cells[2]) ?? '';
-        const costStr = ((hasModelCol ? cells[4] : cells[3]) ?? '').replace(/[$*]/g, '');
-        const totalCostCents = Math.round(parseFloat(costStr) * 100);
-        const durationSeconds = parseDuration((hasModelCol ? cells[5] : cells[4]) ?? '');
-
-        const status =
-          Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
-
-        const parsed: ParsedRun = {
-          workflowName,
-          status,
-          totalCostCents: Number.isNaN(totalCostCents) ? 0 : totalCostCents,
-          durationSeconds,
-          dashboardUrl: '',
-          model,
-          turns: null,
-        };
-        return parsed;
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null) as ParsedRun[];
+    return parseTableRows(tableMatch[1]);
   } catch {
     return [];
   }
@@ -245,9 +302,8 @@ async function findExistingComment({
   issueOrPrNumber: number;
 }): Promise<{ id: number; body: string } | null> {
   try {
-    const { data: comments } = await (
-      octokit as ReturnType<typeof import('@actions/github').getOctokit>
-    ).rest.issues.listComments({
+    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
+    const comments = await gh.paginate(gh.rest.issues.listComments, {
       owner,
       repo,
       issue_number: issueOrPrNumber,
