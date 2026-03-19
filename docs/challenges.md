@@ -123,4 +123,5 @@ If the user omits `if: always()` on the AgentMeter step, failed agent runs won't
 | Comment posting | ✅ | Upsert by marker, correct PR/issue number |
 | `GITHUB_TOKEN` availability | ✅ | `github_token` input with `default: ${{ github.token }}` |
 | Node.js version | ✅ | node24 |
-| Pricing table | ✅ | Fetched from `/api/models/pricing`; built-in prefix fallback |
+| Pricing table | ✅ | Fetched from `/api/models/pricing`; shows `—` if unreachable |
+| Codex token counts | ⚠️ Known limitation | `codex exec` (via `openai/codex-action`) does not expose per-run token counts through any stable interface. Cost shows as `—` for Codex runs. Duration and status are tracked correctly. |

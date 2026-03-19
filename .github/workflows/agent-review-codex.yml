@@ -39,7 +39,6 @@ jobs:
           prompt-file: .github/codex/prompts/review.md
           model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           sandbox: workspace-write
-          output-file: /tmp/codex-output.md
 
       - name: Post review comment
         if: steps.codex.outputs.final-message != ''
@@ -56,33 +55,6 @@ jobs:
         env:
           CODEX_REVIEW: ${{ steps.codex.outputs.final-message }}
 
-      - name: Extract Codex token usage
-        id: extract_tokens
-        if: always()
-        env:
-          CODEX_HOME: /home/runner/.codex
-        run: |
-          DB="$CODEX_HOME/logs_1.sqlite"
-          INPUT=0; OUTPUT=0; CACHE_READ=0
-
-          echo "=== CODEX_HOME files ==="
-          find "$CODEX_HOME" -type f 2>/dev/null | while read -r f; do
-            echo "--- $f ---"
-            if [[ "$f" == *.json ]]; then cat "$f" 2>/dev/null; fi
-            if [[ "$f" == *.toml ]]; then cat "$f" 2>/dev/null; fi
-          done
-          echo "=== end ==="
-
-          echo "=== /tmp/codex-output.md (last 20 lines) ==="
-          tail -20 /tmp/codex-output.md 2>/dev/null || echo "(not found)"
-          echo "=== end ==="
-
-          {
-            echo "input_tokens=$INPUT"
-            echo "output_tokens=$OUTPUT"
-            echo "cache_read_tokens=$CACHE_READ"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Track with AgentMeter
         if: always()
         uses: foo-software/agentmeter-action@main
@@ -92,8 +64,5 @@ jobs:
           engine: codex
           model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
           status: ${{ job.status == 'success' && 'success' || 'failed' }}
-          input_tokens: ${{ steps.extract_tokens.outputs.input_tokens }}
-          output_tokens: ${{ steps.extract_tokens.outputs.output_tokens }}
-          cache_read_tokens: ${{ steps.extract_tokens.outputs.cache_read_tokens }}
           started_at: ${{ steps.timer.outputs.started_at }}
           post_comment: 'true'
