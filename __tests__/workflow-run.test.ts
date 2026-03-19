@@ -257,6 +257,9 @@ describe('resolveWorkflowRun', () => {
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.tokens).toBeUndefined();
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('unexpected structure')
+    );
   });
 
   it('returns null tokens when cache_write_tokens is a non-numeric value', async () => {
@@ -272,9 +275,12 @@ describe('resolveWorkflowRun', () => {
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.tokens).toBeUndefined();
+    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('unexpected structure')
+    );
   });
 
-  it('proceeds when listJobsForWorkflowRun fails (non-gh-aw workflow)', async () => {
+  it('skips when listJobsForWorkflowRun fails (fail closed to prevent double-ingest)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -283,7 +289,7 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.shouldProceed).toBe(true);
+    expect(result.shouldProceed).toBe(false);
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')
     );

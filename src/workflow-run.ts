@@ -184,10 +184,11 @@ async function checkConclusionJobCompleted({
     core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
     return true;
   } catch (error) {
-    // If the API call fails (e.g. non-gh-aw workflow with no conclusion job),
-    // proceed anyway — the gate is a best-effort dedup, not a hard requirement.
-    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Proceeding.`);
-    return true;
+    // Fail closed on API errors — proceeding on a failed gate check risks double-ingest.
+    // A missing conclusion job (non-gh-aw workflow) is handled above as a successful
+    // API call that returns no matching job, not as an exception.
+    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Skipping.`);
+    return false;
   }
 }
 
