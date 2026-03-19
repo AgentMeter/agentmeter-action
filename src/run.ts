@@ -79,20 +79,32 @@ export async function run(): Promise<void> {
     }
   }
 
-  // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction
+  // Token resolution priority: explicit inputs > workflow_run artifact > agent_output extraction.
+  // Split into two resolveTokens calls so the artifact wins over stdout extraction.
   const tokens =
     resolveTokens({
-      agentOutput: inputs.agentOutput,
+      agentOutput: '',
       inputTokensOverride: inputs.inputTokens,
       outputTokensOverride: inputs.outputTokens,
       cacheReadTokensOverride: inputs.cacheReadTokens,
       cacheWriteTokensOverride: inputs.cacheWriteTokens,
-    }) ?? workflowRunTokens;
+    }) ??
+    workflowRunTokens ??
+    resolveTokens({
+      agentOutput: inputs.agentOutput,
+      inputTokensOverride: null,
+      outputTokensOverride: null,
+      cacheReadTokensOverride: null,
+      cacheWriteTokensOverride: null,
+    });
 
+  // Prefer ctx.triggerRef (correctly set for inline runs including issue vs PR distinction).
+  // Fall back to buildTriggerRef only for companion workflow_run mode where ctx.triggerRef is null.
   const triggerRef =
-    resolvedTriggerNumber !== null
+    ctx.triggerRef ??
+    (resolvedTriggerNumber !== null
       ? buildTriggerRef(resolvedTriggerNumber, resolvedTriggerEvent)
-      : ctx.triggerRef;
+      : null);
 
   const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
 

@@ -65,10 +65,10 @@ function buildTableRows({
   runs,
   startIndex,
 }: {
-  /** Runs to render */
-  runs: RunRow[];
   /** 1-based row number for the first run */
   startIndex: number;
+  /** Runs to render */
+  runs: RunRow[];
 }): string[] {
   return runs.map((run, i) => {
     const icon = STATUS_EMOJI[run.status] ?? '❓';
