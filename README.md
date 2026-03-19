@@ -54,7 +54,14 @@ That's it. The action will record the run and post a cost comment on the PR or i
 
 ## Usage examples
 
-### Claude Code — inline (recommended)
+There are two ways to use this action:
+
+- **Inline** — the AgentMeter step runs in the same workflow as the agent. Token counts are passed directly as inputs. Simpler, and works for Claude Code and Codex.
+- **Companion (`workflow_run`)** — the AgentMeter action lives in a separate workflow that triggers when the agent workflow completes. Required when the agent runs in its own workflow (e.g. gh-aw). The action auto-resolves timestamps, trigger number, and token counts from an artifact.
+
+The examples below are inline. See [Companion `workflow_run` mode](#companion-workflow_run-mode) for the other pattern.
+
+### Claude Code — inline
 
 ```yaml
 steps:
