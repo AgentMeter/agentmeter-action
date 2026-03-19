@@ -62,33 +62,25 @@ jobs:
         env:
           CODEX_HOME: /home/runner/.codex
         run: |
-          echo "=== CODEX_HOME contents ==="
-          find "$CODEX_HOME" -type f 2>/dev/null || echo "(empty or missing)"
-          echo "=== end ==="
+          DB="$CODEX_HOME/logs_1.sqlite"
+          INPUT=0; OUTPUT=0; CACHE_READ=0
 
-          # Try session files in CODEX_HOME/sessions/ first, then ~/.codex/sessions/
-          SESSION_FILE=$(ls -t "$CODEX_HOME"/sessions/*.jsonl 2>/dev/null | head -1 || \
-                         ls -t ~/.codex/sessions/*.jsonl 2>/dev/null | head -1 || true)
-
-          echo "SESSION_FILE=$SESSION_FILE"
-
-          if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
-            echo "=== last 5 lines of session file ==="
-            tail -5 "$SESSION_FILE"
+          if [ -f "$DB" ]; then
+            echo "=== SQLite schema ==="
+            sqlite3 "$DB" ".schema" 2>/dev/null || echo "(schema unavailable)"
             echo "=== end ==="
-            TOKEN_LINE=$(grep '"token_count"' "$SESSION_FILE" 2>/dev/null | tail -1 || true)
-            if [ -n "$TOKEN_LINE" ]; then
-              INPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.input_tokens // 0')
-              OUTPUT=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.output_tokens // 0')
-              CACHE_READ=$(echo "$TOKEN_LINE" | jq -r '.payload.info.total_token_usage.cached_input_tokens // 0')
-            else
-              echo "No token_count event found in session file"
-              INPUT=0; OUTPUT=0; CACHE_READ=0
-            fi
+
+            # Try to extract token usage — query will be refined once schema is known
+            USAGE_JSON=$(sqlite3 "$DB" \
+              "SELECT json FROM events WHERE json LIKE '%token%' ORDER BY rowid DESC LIMIT 5;" \
+              2>/dev/null || true)
+            echo "=== token rows ==="
+            echo "$USAGE_JSON"
+            echo "=== end ==="
           else
-            echo "No session file found"
-            INPUT=0; OUTPUT=0; CACHE_READ=0
+            echo "No SQLite database found at $DB"
           fi
+
           {
             echo "input_tokens=$INPUT"
             echo "output_tokens=$OUTPUT"
