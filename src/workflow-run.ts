@@ -278,8 +278,8 @@ async function resolveTrigger({
         owner,
         repo,
         head: `${owner}:${headBranch}`,
-        state: 'all',
         per_page: 1,
+        state: 'open',
       });
       if (prs[0]) {
         return { triggerNumber: prs[0].number, triggerEvent: 'pull_request' };

@@ -10,9 +10,17 @@ import { resolveWorkflowRun } from './workflow-run';
 
 /**
  * Builds a human-readable trigger ref string from a number and event name.
+ * Covers both raw GitHub event names and the mapped triggerType values from context.ts.
  */
-function buildTriggerRef(number: number, eventName: string): string {
-  // Covers both raw GitHub event names and the mapped triggerType values from context.ts
+function buildTriggerRef({
+  eventName,
+  number,
+}: {
+  /** Raw GitHub event name or mapped triggerType from context.ts */
+  eventName: string;
+  /** PR or issue number */
+  number: number;
+}): string {
   const prEvents = new Set([
     'pull_request',
     'pull_request_review_comment',
@@ -103,7 +111,7 @@ export async function run(): Promise<void> {
   const triggerRef =
     ctx.triggerRef ??
     (resolvedTriggerNumber !== null
-      ? buildTriggerRef(resolvedTriggerNumber, resolvedTriggerEvent)
+      ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
       : null);
 
   const triggerType = resolvedTriggerEvent || ctx.triggerType || 'other';
