@@ -17,11 +17,11 @@ npm run test:watch
 The test suite covers:
 
 - **`token-extractor.test.ts`** — JSON and regex-based token extraction, priority logic, edge cases
-- **`context.test.ts`** — GitHub event → trigger type mapping, trigger ref extraction for all event types
-- **`comment.test.ts`** — Markdown comment formatting, status emojis, cost formatting, multi-run accumulation, old/new column format compatibility
+- **`context.test.ts`** — GitHub event → trigger type mapping, trigger ref extraction for all event types, `issue_comment` PR vs issue distinction
+- **`comment.test.ts`** — Markdown comment formatting, status emojis, cost formatting, multi-run accumulation, newest-first ordering, 5-run visible limit with collapsible history, old/new column format compatibility
 - **`ingest.test.ts`** — API client success/failure handling, retry logic, Authorization header
-- **`workflow-run.test.ts`** — `workflow_run_id` auto-resolution: gate logic, status normalization, trigger number fallback, zip artifact parsing
-- **`pricing.test.ts`** — `fetchPricing` success/failure/timeout/malformed-response handling, `getPricing` exact and prefix matching, case insensitivity
+- **`workflow-run.test.ts`** — `workflow_run_id` auto-resolution: gate logic, status normalization, trigger number fallback, zip artifact parsing, partial artifact handling
+- **`pricing.test.ts`** — `fetchPricing` success/failure/timeout/malformed-response handling, `getPricing` exact and prefix matching, case insensitivity, `null` cache pricing
 
 ---
 
@@ -124,17 +124,18 @@ It uses hardcoded synthetic token counts and a `sleep 10` step so the reported d
 2. `npm run type-check` — TypeScript strict mode
 3. `npm test` — Full test suite
 
+`.github/workflows/build.yml` also runs on every push and PR to verify `dist/index.js` is not stale.
+
 ---
 
 ## Publishing a new version
 
 1. Ensure all tests pass: `npm test`
 2. Run type check: `npm run type-check`
-3. Build: `npm run build`
-4. Commit everything including `dist/`
-5. Push to `main`
-6. Create a GitHub release with a semver tag: `v1.0.0`
-7. Update the major version tag: `git tag -f v1 && git push -f origin v1`
-8. In the GitHub release UI, check "Publish this Action to GitHub Marketplace"
+3. Commit everything — the pre-commit hook automatically runs `npm run build` and stages `dist/index.js` and `dist/licenses.txt`
+4. Push to `main`
+5. Create a GitHub release with a semver tag: `v1.0.0`
+6. Update the major version tag: `git tag -f v1 && git push -f origin v1`
+7. In the GitHub release UI, check "Publish this Action to GitHub Marketplace"
 
-> **Note:** `dist/` must be committed. GitHub Actions checks out the repo at the referenced tag and runs `dist/index.js` directly — it does not run `npm install` or `npm run build`.
+> **Note:** `dist/` must be committed. GitHub Actions checks out the repo at the referenced tag and runs `dist/index.js` directly — it does not run `npm install` or `npm run build`. The pre-commit hook ensures `dist/` is always up-to-date before any commit lands.
