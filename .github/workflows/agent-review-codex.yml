@@ -66,16 +66,16 @@ jobs:
           INPUT=0; OUTPUT=0; CACHE_READ=0
 
           if [ -f "$DB" ]; then
-            echo "=== SQLite schema ==="
-            sqlite3 "$DB" ".schema" 2>/dev/null || echo "(schema unavailable)"
+            echo "=== messages containing 'token' ==="
+            sqlite3 "$DB" \
+              "SELECT message FROM logs WHERE message LIKE '%token%' ORDER BY id DESC LIMIT 10;" \
+              2>/dev/null || echo "(query failed)"
             echo "=== end ==="
 
-            # Try to extract token usage — query will be refined once schema is known
-            USAGE_JSON=$(sqlite3 "$DB" \
-              "SELECT json FROM events WHERE json LIKE '%token%' ORDER BY rowid DESC LIMIT 5;" \
-              2>/dev/null || true)
-            echo "=== token rows ==="
-            echo "$USAGE_JSON"
+            echo "=== last 10 messages ==="
+            sqlite3 "$DB" \
+              "SELECT message FROM logs ORDER BY id DESC LIMIT 10;" \
+              2>/dev/null || echo "(query failed)"
             echo "=== end ==="
           else
             echo "No SQLite database found at $DB"
