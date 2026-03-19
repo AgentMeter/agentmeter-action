@@ -106,10 +106,11 @@ export async function resolveWorkflowRun({
 }
 
 /**
- * Maps a raw workflow_run conclusion to a valid AgentMeter API status value.
+ * Maps a raw GitHub step/workflow conclusion to a valid AgentMeter API status value.
  * Returns 'skip' for conclusions that should not be tracked.
+ * GitHub step outcomes use 'failure'; the API expects 'failed'.
  */
-function normalizeConclusion(conclusion: string): string {
+export function normalizeConclusion(conclusion: string): string {
   const map: Record<string, string> = {
     success: 'success',
     failure: 'failed',
@@ -267,7 +268,7 @@ async function resolveTrigger({
   if (pullRequests.length > 0 && pullRequests[0]) {
     return {
       triggerNumber: pullRequests[0].number,
-      triggerEvent: 'pull_request',
+      triggerEvent: event,
     };
   }
 
@@ -288,7 +289,7 @@ async function resolveTrigger({
         state: 'all',
       });
       if (prs[0]) {
-        return { triggerNumber: prs[0].number, triggerEvent: 'pull_request' };
+        return { triggerNumber: prs[0].number, triggerEvent: event };
       }
     } catch (error) {
       core.warning(`AgentMeter: could not look up PR for branch ${headBranch}: ${error}`);

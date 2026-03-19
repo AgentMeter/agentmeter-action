@@ -6,7 +6,7 @@ import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
 import { fetchPricing } from './pricing';
 import { resolveTokens } from './token-extractor';
-import { resolveWorkflowRun } from './workflow-run';
+import { normalizeConclusion, resolveWorkflowRun } from './workflow-run';
 
 /**
  * Builds a human-readable trigger ref string from a number and event name.
@@ -140,7 +140,7 @@ export async function run(): Promise<void> {
       triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
       model: inputs.model,
-      status: inputs.status,
+      status: normalizeConclusion(inputs.status),
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: inputs.turns,
@@ -169,7 +169,7 @@ export async function run(): Promise<void> {
         issueOrPrNumber: resolvedTriggerNumber,
         runData: {
           workflowName: resolvedWorkflowName,
-          status: inputs.status,
+          status: normalizeConclusion(inputs.status),
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,
