@@ -12,7 +12,11 @@ import { resolveWorkflowRun } from './workflow-run';
  * Builds a human-readable trigger ref string from a number and event name.
  */
 function buildTriggerRef(number: number, eventName: string): string {
-  if (eventName === 'pull_request' || eventName === 'pull_request_review_comment') {
+  if (
+    eventName === 'pull_request' ||
+    eventName === 'pull_request_review_comment' ||
+    eventName === 'pr_comment'
+  ) {
     return `PR #${number}`;
   }
   return `#${number}`;
@@ -34,7 +38,7 @@ export async function run(): Promise<void> {
   // When workflow_run_id is provided, resolve all workflow-run data automatically:
   // timestamps, trigger number, and agent-tokens artifact. This removes the need
   // for manual pre-steps in the caller's companion workflow.
-  let workflowRunTokens: ReturnType<typeof resolveTokens>;
+  let workflowRunTokens: ReturnType<typeof resolveTokens> = undefined;
   let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedStartedAt = inputs.startedAt || selfStartedAt;

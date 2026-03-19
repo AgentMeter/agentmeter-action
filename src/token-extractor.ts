@@ -64,7 +64,7 @@ function tryExtractFromJson(
  *   cached_input_tokens → cacheReadTokens
  */
 function tryExtractFromCodexExecJsonl(
-  agentOutput: string,
+  agentOutput: string
 ): { tokens: TokenCounts; isApproximate: boolean } | null {
   const lines = agentOutput.split('\n');
   let inputTokens = 0;
@@ -78,13 +78,11 @@ function tryExtractFromCodexExecJsonl(
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       const obj =
-        typeof parsed === 'object' && parsed !== null
-          ? (parsed as Record<string, unknown>)
-          : null;
+        typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
       if (obj?.['type'] !== 'turn.completed') continue;
       const usage = obj['usage'];
       if (typeof usage !== 'object' || usage === null) continue;
-      const u = usage as (CodexExecTurnCompleted)['usage'];
+      const u = usage as CodexExecTurnCompleted['usage'];
       inputTokens += u.input_tokens ?? 0;
       outputTokens += u.output_tokens ?? 0;
       cacheReadTokens += u.cached_input_tokens ?? 0;
