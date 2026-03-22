@@ -2,6 +2,8 @@
 
 Visibility into what your AI agents actually cost. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
 
+> **⚠️ Early Access** — AgentMeter is live at [agentmeter.app](https://agentmeter.app) but actively evolving. Core ingest, dashboard, and PR comment features are stable. Some features are still in progress (budget alerts, CSV export, runs table filters). The API surface may change without notice.
+
 [![CI](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml)
 
 ---
@@ -357,6 +359,8 @@ Place `if: always()` on the AgentMeter step so it runs even when the agent step 
 - A `GITHUB_TOKEN` (automatically available in every workflow — no extra config needed)
 - An AgentMeter API key from [agentmeter.app](https://agentmeter.app)
 
+**Data retention:** Free tier keeps run data for 30 days. Pro tier keeps data for 90 days.
+
 ---
 
 ## Data collection and privacy
@@ -382,6 +386,18 @@ AgentMeter does **not** collect or transmit:
 - Any data beyond what is listed above
 
 For gh-aw integrations using `workflow_run_id`: the action downloads a small JSON artifact (`agent-tokens.json`) containing only the four integer token counts. The full agent log never leaves the runner.
+
+---
+
+## AgentMeter dashboard
+
+After runs are ingested, view them at [agentmeter.app/dashboard](https://agentmeter.app/dashboard):
+
+- **Runs feed** — paginated list with cost, status, model, duration, and workflow name per run
+- **Run detail** — token breakdown, related runs grouped by the same PR or issue, dashboard link in PR comments
+- **Trends** (Pro) — spend over time with breakdowns by workflow, engine, and repo
+- **Team** (Pro + GitHub Org) — invite team members with ADMIN or MEMBER roles; manage access from Settings
+- **Settings** — API key management, connected repos, plan and billing
 
 ---
 
