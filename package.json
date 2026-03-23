@@ -36,7 +36,7 @@
     "build:watch": "tsc --watch",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "prepare": "npm run build",
+    "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
@@ -55,6 +55,7 @@
     "@biomejs/biome": "^2.3.8",
     "@types/node": "^20",
     "@vercel/ncc": "^0.38.3",
+    "husky": "^9.1.7",
     "lint-staged": "^15.2.11",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
