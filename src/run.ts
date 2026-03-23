@@ -83,8 +83,8 @@ export async function run(): Promise<void> {
       inputs = { ...inputs, status: runData.normalizedStatus };
 
       // Only override with resolved values when explicit inputs aren't set
-      if (!inputs.startedAt) resolvedStartedAt = runData.startedAt;
-      if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
+      if (!inputs.startedAt && runData.startedAt) resolvedStartedAt = runData.startedAt;
+      if (!inputs.completedAt && runData.completedAt) resolvedCompletedAt = runData.completedAt;
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
@@ -140,7 +140,9 @@ export async function run(): Promise<void> {
   const startMs = new Date(resolvedStartedAt).getTime();
   const endMs = new Date(resolvedCompletedAt).getTime();
   const durationSeconds =
-    Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.round((endMs - startMs) / 1000) : 0;
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, Math.round((endMs - startMs) / 1000))
+      : 0;
 
   const resolvedTurns =
     inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
