@@ -5,7 +5,7 @@ import { extractContext } from './context';
 import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
 import { fetchPricing } from './pricing';
-import { resolveTokens } from './token-extractor';
+import { extractTurnsFromOutput, resolveTokens } from './token-extractor';
 import { normalizeConclusion, resolveWorkflowRun } from './workflow-run';
 
 /**
@@ -154,7 +154,9 @@ export async function run(): Promise<void> {
       status: normalizeConclusion(inputs.status),
       prNumber: inputs.prNumber,
       durationSeconds,
-      turns: inputs.turns,
+      turns:
+        inputs.turns ??
+        (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null),
       startedAt: resolvedStartedAt,
       completedAt: resolvedCompletedAt,
       tokens,

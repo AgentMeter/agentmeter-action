@@ -183,6 +183,67 @@ function tryExtractFromText(
 }
 
 /**
+ * Extracts the number of agent turns from agent stdout.
+ *
+ * Tries in order:
+ * 1. Claude Code JSON — top-level `num_turns` field (emitted with --output-format json)
+ * 2. Codex exec JSONL — counts `turn.completed` events (each event = one turn)
+ * 3. Regex fallback — matches patterns like "turns: 12" or "turn 12 of" in plain text
+ *
+ * Returns null if nothing is found.
+ */
+export function extractTurnsFromOutput(agentOutput: string): number | null {
+  if (!agentOutput) return null;
+
+  // 1. Claude Code JSON: top-level num_turns
+  try {
+    const parsed = JSON.parse(agentOutput) as ClaudeCodeOutput;
+    if (typeof parsed.num_turns === 'number' && parsed.num_turns > 0) {
+      return parsed.num_turns;
+    }
+  } catch {
+    // not JSON — fall through
+  }
+
+  // 2. Codex exec --json JSONL: count turn.completed events
+  if (agentOutput.includes('"turn.completed"')) {
+    const lines = agentOutput.split('\n');
+    let turnCount = 0;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.includes('"turn.completed"')) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        const obj =
+          typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>)
+            : null;
+        if (obj?.['type'] === 'turn.completed') turnCount++;
+      } catch {
+        // not valid JSON, skip line
+      }
+    }
+    if (turnCount > 0) return turnCount;
+  }
+
+  // 3. Regex fallback: "turns: 12", "12 turns", "turn 12 of"
+  const patterns = [
+    /\bturns?:\s*(\d+)/i,
+    /\b(\d+)\s+turns?\b/i,
+    /\bturn\s+(\d+)\s+of\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = agentOutput.match(pattern);
+    if (match?.[1]) {
+      const n = parseInt(match[1], 10);
+      if (n > 0) return n;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolves the final token counts to use, following priority order:
  * 1. Explicit inputs (input_tokens / output_tokens)
  * 2. Extracted from agent_output JSON
