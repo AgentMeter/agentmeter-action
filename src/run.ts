@@ -142,6 +142,9 @@ export async function run(): Promise<void> {
   const durationSeconds =
     Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.round((endMs - startMs) / 1000) : 0;
 
+  const resolvedTurns =
+    inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
+
   const result = await submitRun({
     apiKey: inputs.apiKey,
     apiUrl: inputs.apiUrl,
@@ -157,8 +160,7 @@ export async function run(): Promise<void> {
       status: normalizeConclusion(inputs.status),
       prNumber: inputs.prNumber,
       durationSeconds,
-      turns:
-        inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null),
+      turns: resolvedTurns,
       startedAt: resolvedStartedAt,
       completedAt: resolvedCompletedAt,
       tokens,
@@ -188,7 +190,7 @@ export async function run(): Promise<void> {
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,
-          turns: inputs.turns,
+          turns: resolvedTurns,
           durationSeconds,
           dashboardUrl: result.dashboardUrl,
         },
