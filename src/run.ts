@@ -5,7 +5,7 @@ import { extractContext } from './context';
 import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
 import { fetchPricing } from './pricing';
-import { resolveTokens } from './token-extractor';
+import { extractTurnsFromOutput, resolveTokens } from './token-extractor';
 import { normalizeConclusion, resolveWorkflowRun } from './workflow-run';
 
 /**
@@ -59,9 +59,12 @@ export async function run(): Promise<void> {
 
   if (inputs.workflowRunId !== null) {
     if (!githubToken) {
+      // Without a token we cannot gate on the conclusion job, so all ~5 workflow_run
+      // firings would be ingested and attributed to the wrong run. Skip entirely.
       core.warning(
-        'AgentMeter: workflow_run_id provided but GITHUB_TOKEN not set — skipping auto-resolution.'
+        'AgentMeter: workflow_run_id is set but GITHUB_TOKEN is not available — skipping run to avoid duplicate ingests and incorrect attribution.'
       );
+      return;
     } else {
       const runData = await resolveWorkflowRun({
         githubToken,
@@ -80,8 +83,8 @@ export async function run(): Promise<void> {
       inputs = { ...inputs, status: runData.normalizedStatus };
 
       // Only override with resolved values when explicit inputs aren't set
-      if (!inputs.startedAt) resolvedStartedAt = runData.startedAt;
-      if (!inputs.completedAt) resolvedCompletedAt = runData.completedAt;
+      if (!inputs.startedAt && runData.startedAt) resolvedStartedAt = runData.startedAt;
+      if (!inputs.completedAt && runData.completedAt) resolvedCompletedAt = runData.completedAt;
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
@@ -137,7 +140,12 @@ export async function run(): Promise<void> {
   const startMs = new Date(resolvedStartedAt).getTime();
   const endMs = new Date(resolvedCompletedAt).getTime();
   const durationSeconds =
-    Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.round((endMs - startMs) / 1000) : 0;
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, Math.round((endMs - startMs) / 1000))
+      : 0;
+
+  const resolvedTurns =
+    inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
 
   const result = await submitRun({
     apiKey: inputs.apiKey,
@@ -154,7 +162,7 @@ export async function run(): Promise<void> {
       status: normalizeConclusion(inputs.status),
       prNumber: inputs.prNumber,
       durationSeconds,
-      turns: inputs.turns,
+      turns: resolvedTurns,
       startedAt: resolvedStartedAt,
       completedAt: resolvedCompletedAt,
       tokens,
@@ -184,7 +192,7 @@ export async function run(): Promise<void> {
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,
-          turns: inputs.turns,
+          turns: resolvedTurns,
           durationSeconds,
           dashboardUrl: result.dashboardUrl,
         },

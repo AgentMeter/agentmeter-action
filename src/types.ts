@@ -210,4 +210,6 @@ export interface ClaudeCodeOutput {
   };
   /** Some versions include cost_usd directly */
   cost_usd?: number;
+  /** Number of agent turns (emitted by --output-format json) */
+  num_turns?: number;
 }

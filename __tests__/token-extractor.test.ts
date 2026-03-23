@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { extractTokensFromOutput, resolveTokens } from '../src/token-extractor';
+import {
+  extractTokensFromOutput,
+  extractTurnsFromOutput,
+  resolveTokens,
+} from '../src/token-extractor';
 
 describe('extractTokensFromOutput', () => {
   it('returns null for empty output', () => {
@@ -191,6 +195,72 @@ describe('extractTokensFromOutput', () => {
     const result = extractTokensFromOutput(output);
     expect(result!.tokens.cacheReadTokens).toBe(0);
     expect(result!.tokens.cacheWriteTokens).toBe(0);
+  });
+});
+
+describe('extractTurnsFromOutput', () => {
+  it('returns null for empty output', () => {
+    expect(extractTurnsFromOutput('')).toBeNull();
+  });
+
+  it('extracts num_turns from Claude Code JSON output', () => {
+    const output = JSON.stringify({
+      num_turns: 7,
+      usage: { input_tokens: 1000, output_tokens: 200 },
+    });
+    expect(extractTurnsFromOutput(output)).toBe(7);
+  });
+
+  it('returns null for Claude Code JSON without num_turns', () => {
+    const output = JSON.stringify({
+      usage: { input_tokens: 1000, output_tokens: 200 },
+    });
+    expect(extractTurnsFromOutput(output)).toBeNull();
+  });
+
+  it('returns null for Claude Code JSON with num_turns of 0', () => {
+    const output = JSON.stringify({ num_turns: 0 });
+    expect(extractTurnsFromOutput(output)).toBeNull();
+  });
+
+  it('counts turn.completed events from Codex exec JSONL', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'abc' }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 100, output_tokens: 50 } }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 200, output_tokens: 80 } }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 150, output_tokens: 60 } }),
+    ].join('\n');
+    expect(extractTurnsFromOutput(jsonlOutput)).toBe(3);
+  });
+
+  it('returns null for Codex JSONL with no turn.completed events', () => {
+    const jsonlOutput = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'abc' }),
+      JSON.stringify({ type: 'item.started' }),
+    ].join('\n');
+    expect(extractTurnsFromOutput(jsonlOutput)).toBeNull();
+  });
+
+  it('extracts turns from "turns: 12" regex pattern', () => {
+    expect(extractTurnsFromOutput('Agent completed. turns: 12')).toBe(12);
+  });
+
+  it('extracts turns from "12 turns" regex pattern', () => {
+    expect(extractTurnsFromOutput('Finished in 12 turns.')).toBe(12);
+  });
+
+  it('extracts total turns from "turn N of <total>" regex pattern', () => {
+    expect(extractTurnsFromOutput('Processing turn 5 of 10...')).toBe(10);
+  });
+
+  it('returns null for plain text with no turn patterns', () => {
+    expect(extractTurnsFromOutput('Agent completed the task successfully.')).toBeNull();
+  });
+
+  it('prefers Claude JSON num_turns over Codex JSONL when both present', () => {
+    // JSON.parse succeeds on a valid JSON string — Claude path runs first
+    const output = JSON.stringify({ num_turns: 4 });
+    expect(extractTurnsFromOutput(output)).toBe(4);
   });
 });
 

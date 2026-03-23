@@ -7,10 +7,10 @@ import type { AgentTokensArtifact, TokenCountsWithMeta } from './types';
  * Data resolved from the triggering agent workflow run.
  */
 export interface WorkflowRunData {
-  /** ISO 8601 timestamp when the triggering run started */
-  startedAt: string;
-  /** ISO 8601 timestamp when the triggering run completed */
-  completedAt: string;
+  /** ISO 8601 timestamp when the triggering run started, or null if unavailable */
+  startedAt: string | null;
+  /** ISO 8601 timestamp when the triggering run completed, or null if unavailable */
+  completedAt: string | null;
   /** PR number associated with the triggering run, if any */
   triggerNumber: number | null;
   /** Event name of the triggering run (pull_request, issues, etc.) */
@@ -83,8 +83,8 @@ export async function resolveWorkflowRun({
 
   const run = await fetchRun({ octokit, owner, repo, workflowRunId });
 
-  const startedAt = run?.run_started_at ?? new Date().toISOString();
-  const completedAt = run?.updated_at ?? new Date().toISOString();
+  const startedAt = run?.run_started_at ?? null;
+  const completedAt = run?.updated_at ?? null;
 
   const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
@@ -141,10 +141,9 @@ function emptyResult({
   /** Whether to proceed */
   shouldProceed: boolean;
 }): WorkflowRunData {
-  const now = new Date().toISOString();
   return {
-    startedAt: now,
-    completedAt: now,
+    startedAt: null,
+    completedAt: null,
     triggerNumber: null,
     triggerEvent: '',
     triggerType: 'other',
@@ -320,8 +319,9 @@ async function resolveTrigger({
     }
   }
 
-  // gh-aw issue branches are named agent/issue-N
-  const issueMatch = headBranch.match(/issue[/-](\d+)/i);
+  // gh-aw issue branches are named agent/issue-N — require the full prefix to
+  // avoid mismatching unrelated branches like feature/fix-issue-12-auth.
+  const issueMatch = headBranch.match(/\bagent\/issue-(\d+)\b/);
   if (issueMatch?.[1]) {
     const num = parseInt(issueMatch[1], 10);
     return {
