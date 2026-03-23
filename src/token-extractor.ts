@@ -226,12 +226,8 @@ export function extractTurnsFromOutput(agentOutput: string): number | null {
     if (turnCount > 0) return turnCount;
   }
 
-  // 3. Regex fallback: "turns: 12", "12 turns", "turn 12 of"
-  const patterns = [
-    /\bturns?:\s*(\d+)/i,
-    /\b(\d+)\s+turns?\b/i,
-    /\bturn\s+(\d+)\s+of\b/i,
-  ];
+  // 3. Regex fallback: "turns: 12", "12 turns", "turn N of <total>" (captures total)
+  const patterns = [/\bturns?:\s*(\d+)/i, /\b(\d+)\s+turns?\b/i, /\bturn\s+\d+\s+of\s+(\d+)/i];
   for (const pattern of patterns) {
     const match = agentOutput.match(pattern);
     if (match?.[1]) {

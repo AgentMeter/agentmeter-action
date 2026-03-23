@@ -249,8 +249,8 @@ describe('extractTurnsFromOutput', () => {
     expect(extractTurnsFromOutput('Finished in 12 turns.')).toBe(12);
   });
 
-  it('extracts turns from "turn 5 of" regex pattern', () => {
-    expect(extractTurnsFromOutput('Processing turn 5 of 10...')).toBe(5);
+  it('extracts total turns from "turn N of <total>" regex pattern', () => {
+    expect(extractTurnsFromOutput('Processing turn 5 of 10...')).toBe(10);
   });
 
   it('returns null for plain text with no turn patterns', () => {

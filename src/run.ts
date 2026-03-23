@@ -59,9 +59,12 @@ export async function run(): Promise<void> {
 
   if (inputs.workflowRunId !== null) {
     if (!githubToken) {
+      // Without a token we cannot gate on the conclusion job, so all ~5 workflow_run
+      // firings would be ingested and attributed to the wrong run. Skip entirely.
       core.warning(
-        'AgentMeter: workflow_run_id provided but GITHUB_TOKEN not set — skipping auto-resolution.'
+        'AgentMeter: workflow_run_id is set but GITHUB_TOKEN is not available — skipping run to avoid duplicate ingests and incorrect attribution.'
       );
+      return;
     } else {
       const runData = await resolveWorkflowRun({
         githubToken,
@@ -155,8 +158,7 @@ export async function run(): Promise<void> {
       prNumber: inputs.prNumber,
       durationSeconds,
       turns:
-        inputs.turns ??
-        (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null),
+        inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null),
       startedAt: resolvedStartedAt,
       completedAt: resolvedCompletedAt,
       tokens,
