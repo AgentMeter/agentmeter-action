@@ -153,13 +153,86 @@ describe('resolveWorkflowRun', () => {
         pull_requests: [],
       },
     });
-    octokit.rest.pulls.list = vi.fn().mockResolvedValue({ data: [{ number: 7 }] });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [{ number: 7, head: { sha: '' } }],
+    });
     mockGetOctokit.mockReturnValue(octokit as never);
 
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.triggerNumber).toBe(7);
     expect(result.triggerEvent).toBe('pull_request');
+  });
+
+  it('selects the SHA-matching PR when multiple PRs share the same branch name', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        run_started_at: '2026-03-09T10:00:00Z',
+        updated_at: '2026-03-09T10:05:00Z',
+        head_branch: 'feat/my-feature',
+        head_sha: 'abc123',
+        event: 'pull_request',
+        pull_requests: [],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [
+        { number: 10, head: { sha: 'wrong-sha' } },
+        { number: 20, head: { sha: 'abc123' } },
+      ],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBe(20);
+  });
+
+  it('returns null triggerNumber when headSha is set but no PR head matches', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        run_started_at: '2026-03-09T10:00:00Z',
+        updated_at: '2026-03-09T10:05:00Z',
+        head_branch: 'feat/my-feature',
+        head_sha: 'abc123',
+        event: 'pull_request',
+        pull_requests: [],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [
+        { number: 10, head: { sha: 'wrong-1' } },
+        { number: 20, head: { sha: 'wrong-2' } },
+      ],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBeNull();
+  });
+
+  it('falls back to prs[0] when no headSha is available', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        run_started_at: '2026-03-09T10:00:00Z',
+        updated_at: '2026-03-09T10:05:00Z',
+        head_branch: 'feat/my-feature',
+        event: 'pull_request',
+        pull_requests: [],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [
+        { number: 10, head: { sha: 'sha-1' } },
+        { number: 20, head: { sha: 'sha-2' } },
+      ],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBe(10);
   });
 
   it('resolves trigger number from branch name when no pull_requests', async () => {

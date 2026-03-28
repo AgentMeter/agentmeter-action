@@ -99,7 +99,7 @@ When set, `resolveWorkflowRun` does four things:
 
 1. **Gate** — calls `listJobsForWorkflowRun` and exits early unless a job named `conclusion` has completed. Prevents ~5 duplicate ingests from gh-aw's multi-job structure. Single-job workflows pass through unconditionally.
 2. **Status normalization** — maps GitHub conclusions (`failure` → `failed`, `skipped` → skip entirely) to the AgentMeter API enum. Unrecognized statuses (e.g. custom `needs_human`) pass through unchanged.
-3. **Trigger resolution** — reads `pull_requests[]` from the run object; falls back to a `pulls.list` lookup by head branch if empty (GitHub API quirk for some PR-triggered runs). Works for fork PRs. Issue branches are matched only when the branch name contains `agent/issue-N` (the gh-aw convention) — bare `issue-N` patterns are intentionally not matched to avoid misattributing unrelated branches like `feature/fix-issue-12-auth`.
+3. **Trigger resolution** — reads `pull_requests[]` from the run object; falls back to a `pulls.list` lookup by head branch if empty (GitHub API quirk for some PR-triggered runs). When `head_sha` is available, the fallback validates each candidate PR's head SHA against it — if a match is found it is used; if no match is found `triggerNumber` returns `null` rather than guessing. When `head_sha` is absent (API failure), falls back to `prs[0]`. Issue branches are matched only when the branch name contains `agent/issue-N` (the gh-aw convention) to avoid misattributing unrelated branches.
 4. **Token artifact** — downloads and unzips the `agent-tokens` artifact using `fflate`.
 
 ### Pricing (`src/pricing.ts`)
@@ -125,7 +125,7 @@ When `workflow_run_id` is provided, `githubRunId` in the ingest payload is set t
 
 `context.ts` maps GitHub event names to AgentMeter trigger types. `issue_comment` is correctly classified as `pr_comment` when `payload.issue.pull_request` is present, and `issue_comment` otherwise.
 
-In companion `workflow_run` mode, `resolveTrigger` in `workflow-run.ts` returns a `triggerType` and `triggerRef` that reflect the original triggering event, not the companion workflow's own `workflow_run` event.
+In companion `workflow_run` mode, timestamps resolve from the agent run API (`run_started_at`, `updated_at`). If the API call fails, timestamps are left empty and `durationSeconds` resolves to 0 — the companion workflow's own start time is never substituted to avoid recording a misleading duration.
 
 ---
 

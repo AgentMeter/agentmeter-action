@@ -314,7 +314,9 @@ async function resolveTrigger({
       });
       // Validate by head SHA when available to avoid matching the wrong PR when multiple
       // PRs share the same branch name (e.g. reused or fork branches).
-      const match = headSha ? (prs.find((pr) => pr.head.sha === headSha) ?? prs[0]) : prs[0];
+      // When headSha is provided but no PR matches, return null rather than guessing.
+      const shaMatch = headSha ? prs.find((pr) => pr.head.sha === headSha) : null;
+      const match = shaMatch ?? (headSha ? null : prs[0]);
       if (match) {
         return {
           triggerNumber: match.number,
