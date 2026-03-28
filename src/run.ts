@@ -82,9 +82,18 @@ export async function run(): Promise<void> {
       // Use normalized status from the run data
       inputs = { ...inputs, status: runData.normalizedStatus };
 
-      // Only override with resolved values when explicit inputs aren't set
-      if (!inputs.startedAt && runData.startedAt) resolvedStartedAt = runData.startedAt;
-      if (!inputs.completedAt && runData.completedAt) resolvedCompletedAt = runData.completedAt;
+      // Only override with resolved values when explicit inputs aren't set.
+      // In workflow_run mode never fall back to selfStartedAt/now — those are the companion
+      // workflow's times, not the agent run's times. Use empty string so durationSeconds
+      // safely resolves to 0 rather than silently recording the wrong run's duration.
+      resolvedStartedAt = inputs.startedAt || runData.startedAt || '';
+      resolvedCompletedAt = inputs.completedAt || runData.completedAt || '';
+      if (
+        (!inputs.startedAt && !runData.startedAt) ||
+        (!inputs.completedAt && !runData.completedAt)
+      ) {
+        core.warning('AgentMeter: workflow run timestamps unavailable — duration will be omitted.');
+      }
       if (inputs.triggerNumber === null) resolvedTriggerNumber = runData.triggerNumber;
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
