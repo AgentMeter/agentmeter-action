@@ -89,7 +89,9 @@ export async function run(): Promise<void> {
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
       resolvedTriggerType = runData.triggerType;
-      if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
+      // Always use the agent workflow's name from the run data — ctx.workflowName is the
+      // companion workflow and would misattribute if used as a fallback here.
+      resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
     }
   }

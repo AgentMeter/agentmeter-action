@@ -96,7 +96,7 @@ export INPUT_AGENT_OUTPUT='{"usage":{"input_tokens":1000,"output_tokens":500,"ca
 node dist/index.js
 ```
 
-### 5. Test turns auto-extraction
+### 6. Test turns auto-extraction
 
 ```bash
 # Claude Code JSON with num_turns
@@ -113,6 +113,10 @@ node dist/index.js
 export INPUT_TURNS="5"
 node dist/index.js
 ```
+
+---
+
+## Testing against a local AgentMeter API
 
 ```bash
 export INPUT_API_URL="http://localhost:3000"

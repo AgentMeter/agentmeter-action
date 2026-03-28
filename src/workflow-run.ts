@@ -89,6 +89,7 @@ export async function resolveWorkflowRun({
   const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
     pullRequests: run?.pull_requests ?? [],
     headBranch: run?.head_branch ?? '',
+    headSha: run?.head_sha ?? '',
     event: run?.event ?? '',
     octokit,
     owner,
@@ -223,6 +224,7 @@ async function fetchRun({
   run_started_at?: string | null;
   updated_at?: string | null;
   head_branch?: string | null;
+  head_sha?: string | null;
   event?: string | null;
   name?: string | null;
   pull_requests?: Array<{ number: number }>;
@@ -237,6 +239,7 @@ async function fetchRun({
       run_started_at: data.run_started_at,
       updated_at: data.updated_at,
       head_branch: data.head_branch,
+      head_sha: data.head_sha,
       event: data.event,
       name: data.name,
       pull_requests: (data.pull_requests ?? []).map((pr) => ({ number: pr.number })),
@@ -255,6 +258,7 @@ async function fetchRun({
  */
 async function resolveTrigger({
   headBranch,
+  headSha,
   event,
   octokit,
   owner,
@@ -263,6 +267,8 @@ async function resolveTrigger({
 }: {
   /** Head branch name of the triggering run */
   headBranch: string;
+  /** Head commit SHA of the triggering run — used to validate the PR fallback match */
+  headSha: string;
   /** Event that triggered the original workflow run */
   event: string;
   /** Authenticated Octokit instance */
@@ -301,17 +307,20 @@ async function resolveTrigger({
         // Omit owner prefix so forked PRs are also matched (fork owner differs from base owner)
         head: headBranch,
         owner,
-        per_page: 1,
+        per_page: 5,
         repo,
         sort: 'updated',
         state: 'all',
       });
-      if (prs[0]) {
+      // Validate by head SHA when available to avoid matching the wrong PR when multiple
+      // PRs share the same branch name (e.g. reused or fork branches).
+      const match = headSha ? (prs.find((pr) => pr.head.sha === headSha) ?? prs[0]) : prs[0];
+      if (match) {
         return {
-          triggerNumber: prs[0].number,
+          triggerNumber: match.number,
           triggerEvent: event,
           triggerType: normalizeTriggerType({ event, isPR: true }),
-          triggerRef: `PR #${prs[0].number}`,
+          triggerRef: `PR #${match.number}`,
         };
       }
     } catch (error) {
