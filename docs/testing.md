@@ -16,7 +16,7 @@ npm run test:watch
 
 The test suite covers:
 
-- **`token-extractor.test.ts`** — JSON and regex-based token extraction, priority logic, edge cases
+- **`token-extractor.test.ts`** — JSON and regex-based token extraction, turns extraction (Claude Code JSON `num_turns`, Codex exec JSONL `turn.completed` count, regex fallback, null cases), priority logic, edge cases
 - **`context.test.ts`** — GitHub event → trigger type mapping, trigger ref extraction for all event types, `issue_comment` PR vs issue distinction
 - **`comment.test.ts`** — Markdown comment formatting, status emojis, cost formatting, multi-run accumulation, newest-first ordering, 5-run visible limit with collapsible history, old/new column format compatibility
 - **`ingest.test.ts`** — API client success/failure handling, retry logic, Authorization header
@@ -96,9 +96,23 @@ export INPUT_AGENT_OUTPUT='{"usage":{"input_tokens":1000,"output_tokens":500,"ca
 node dist/index.js
 ```
 
----
+### 5. Test turns auto-extraction
 
-## Testing against a local AgentMeter API
+```bash
+# Claude Code JSON with num_turns
+export INPUT_AGENT_OUTPUT='{"num_turns":7,"usage":{"input_tokens":1000,"output_tokens":500}}'
+node dist/index.js
+
+# Codex exec JSONL turn.completed events
+export INPUT_AGENT_OUTPUT='{"type":"turn.completed"}
+{"type":"turn.completed"}
+{"type":"turn.completed"}'
+node dist/index.js
+
+# Explicit turns override (auto-extraction ignored)
+export INPUT_TURNS="5"
+node dist/index.js
+```
 
 ```bash
 export INPUT_API_URL="http://localhost:3000"
@@ -132,7 +146,7 @@ It uses hardcoded synthetic token counts and a `sleep 10` step so the reported d
 
 1. Ensure all tests pass: `npm test`
 2. Run type check: `npm run type-check`
-3. Commit everything — the pre-commit hook automatically runs `npm run build` and stages `dist/index.js` and `dist/licenses.txt`
+3. Commit everything — the pre-commit hook runs lint-staged (Biome auto-fix), then `npm run lint` as a hard gate, then `npm run type-check`, then `npm run build`, and finally stages `dist/index.js` and `dist/licenses.txt`
 4. Push to `main`
 5. Create a GitHub release with a semver tag: `v1.0.0`
 6. Update the major version tag: `git tag -f v1 && git push -f origin v1`

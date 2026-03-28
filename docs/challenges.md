@@ -61,7 +61,7 @@ The action reads token counts from an `agent-tokens` artifact uploaded by the ag
 
 ### 3. Trigger number is null for non-standard branch names
 
-For `workflow_run` events, the action resolves the PR/issue number from `pull_requests[]` on the run object, then falls back to a `pulls.list` API call by head branch. If the branch name doesn't follow gh-aw's `agent/issue-N` pattern and `pull_requests[]` is empty (common for push-triggered runs), `triggerNumber` is `null` and no comment is posted.
+For `workflow_run` events, the action resolves the PR/issue number from `pull_requests[]` on the run object, then falls back to a `pulls.list` API call by head branch. Issue numbers are only inferred when the branch name matches the gh-aw convention `agent/issue-N` exactly — this is intentional to avoid misattributing unrelated branches (e.g. `feature/fix-issue-12-auth`). If the branch doesn't follow this pattern and `pull_requests[]` is empty, `triggerNumber` is `null` and no comment is posted.
 
 **Workaround:** Pass `trigger_number` explicitly as an input to override resolution.
 
@@ -140,6 +140,7 @@ The last `token_count` event in the file contains cumulative totals for the full
 - `GITHUB_TOKEN` is always available via the `github_token` input default — no config needed.
 - Comment upsert (update-in-place) works correctly, including across both old 5-column and current 6-column comment formats.
 - All four token types (input, output, cache read, cache write) are tracked when available.
+- `turns` is auto-extracted from `agent_output` when not provided explicitly — Claude Code JSON (`num_turns`), Codex exec JSONL (`turn.completed` count), or regex fallback. The resolved value appears in both the ingest payload and the PR/issue comment.
 - Partial token overrides: providing only `input_tokens` still falls back to artifact or extracted values for the other fields.
 
 ---
@@ -156,12 +157,12 @@ The last `token_count` event in the file contains cumulative totals for the full
 | Token data for non-gh-aw `workflow_run` users | ✅ Documented | See README and challenge #4 above |
 | Zip parsing | ✅ | Uses `fflate` — proper decompression |
 | `githubRunId` in payload | ✅ | Uses agent run ID when `workflow_run_id` is set |
-| Trigger number resolution | ✅ | `pull_requests[]` array + `pulls.list` API fallback; fork PRs supported |
+| Trigger number resolution | ✅ | `pull_requests[]` array + `pulls.list` API fallback; issue branch requires `agent/issue-N` prefix (gh-aw convention) to prevent misattribution |
 | Trigger type resolution | ✅ | `issue_comment` correctly classified as `pr_comment` vs `issue_comment` |
 | Status normalization | ✅ | Raw GitHub conclusion mapped internally; custom statuses pass through unchanged |
 | Partial token overrides | ✅ | Per-field merge — partial overrides don't zero out unspecified fields |
 | Multiple firing dedup | ✅ for gh-aw | Gate on `conclusion` job name |
-| Timestamps / duration | ✅ | Sourced from workflow run API; guards against NaN from invalid timestamps |
+| Timestamps / duration | ✅ | Sourced from workflow run API; `null` when unavailable (falls back to action start/now); duration clamped to ≥0 |
 | Workflow name | ✅ | Uses agent workflow name, not companion |
 | Comment format migration | ✅ | Old 5-column comments parsed correctly |
 | Comment ordering | ✅ | Newest runs displayed first; 5 visible, rest in collapsible section |

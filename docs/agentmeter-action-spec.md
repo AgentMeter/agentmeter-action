@@ -80,13 +80,26 @@ Every API call and comment post uses `core.warning()` for errors, never `core.se
 
 Partial explicit overrides (e.g. providing only `input_tokens`) merge with the artifact or extracted values for the remaining fields rather than zeroing them out.
 
+### Turns extraction priority
+
+`turns` follows the same precedence pattern:
+
+1. Explicit `turns` input
+2. `extractTurnsFromOutput(agent_output)` — tried in order:
+   - Claude Code JSON: top-level `num_turns` field
+   - Codex exec JSONL: count of `turn.completed` events
+   - Regex fallback: `turns: N`, `N turns`, or `turn N of <total>` (captures the total)
+3. `null` — shows as `—` in the dashboard
+
+The resolved value is used in both the ingest payload and the PR/issue comment.
+
 ### `workflow_run_id` auto-resolution (`src/workflow-run.ts`)
 
 When set, `resolveWorkflowRun` does four things:
 
 1. **Gate** — calls `listJobsForWorkflowRun` and exits early unless a job named `conclusion` has completed. Prevents ~5 duplicate ingests from gh-aw's multi-job structure. Single-job workflows pass through unconditionally.
 2. **Status normalization** — maps GitHub conclusions (`failure` → `failed`, `skipped` → skip entirely) to the AgentMeter API enum. Unrecognized statuses (e.g. custom `needs_human`) pass through unchanged.
-3. **Trigger resolution** — reads `pull_requests[]` from the run object; falls back to a `pulls.list` lookup by head branch if empty (GitHub API quirk for some PR-triggered runs). Works for fork PRs (`head` parameter is branch name only, not `owner:branch`).
+3. **Trigger resolution** — reads `pull_requests[]` from the run object; falls back to a `pulls.list` lookup by head branch if empty (GitHub API quirk for some PR-triggered runs). Works for fork PRs. Issue branches are matched only when the branch name contains `agent/issue-N` (the gh-aw convention) — bare `issue-N` patterns are intentionally not matched to avoid misattributing unrelated branches like `feature/fix-issue-12-auth`.
 4. **Token artifact** — downloads and unzips the `agent-tokens` artifact using `fflate`.
 
 ### Pricing (`src/pricing.ts`)
@@ -128,7 +141,8 @@ See `action.yml` for the authoritative list. Key inputs:
 | `engine` | `claude` / `codex` |
 | `status` | Run outcome passed to API |
 | `input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_write_tokens` | Explicit token counts (override extraction per-field) |
-| `agent_output` | Raw stdout for auto-extraction |
+| `turns` | Explicit turn count (auto-extracted from `agent_output` if omitted) |
+| `agent_output` | Raw stdout for auto-extraction of tokens and turns |
 | `started_at` / `completed_at` | ISO 8601 timestamps (override self-measured) |
 | `post_comment` | Whether to upsert a PR/issue comment |
 | `api_url` | API base URL (for local dev / self-hosted) |
