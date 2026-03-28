@@ -1,0 +1,97 @@
+name: "Agent: Code Review (Codex)"
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+concurrency:
+  group: agent-review-codex-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Pre-fetch base and head refs
+        run: |
+          git fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Record start time
+        id: timer
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Codex
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/review.md
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
+          sandbox: workspace-write
+          codex-home: /tmp/codex-home
+
+      - name: Extract Codex token usage
+        id: codex-tokens
+        if: always()
+        run: |
+          rollout=$(find /tmp/codex-home/sessions -name "rollout-*.jsonl" 2>/dev/null -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
+          if [ -z "$rollout" ]; then
+            echo "No rollout JSONL found — token counts unavailable"
+            echo "input_tokens=" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Parsing rollout: $rollout"
+          token_line=$(grep '"token_count"' "$rollout" | tail -1)
+          if [ -z "$token_line" ]; then
+            echo "No token_count event in rollout — token counts unavailable"
+            echo "input_tokens=" >> "$GITHUB_OUTPUT"
+            echo "output_tokens=" >> "$GITHUB_OUTPUT"
+            echo "cache_read_tokens=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "input_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.input_tokens // empty')" >> "$GITHUB_OUTPUT"
+          echo "output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')" >> "$GITHUB_OUTPUT"
+          echo "cache_read_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.cached_input_tokens // empty')" >> "$GITHUB_OUTPUT"
+
+      - name: Post review comment
+        if: steps.codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: process.env.CODEX_REVIEW,
+            });
+        env:
+          CODEX_REVIEW: ${{ steps.codex.outputs.final-message }}
+
+      - name: Track with AgentMeter
+        if: always()
+        uses: foo-software/agentmeter-action@main
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: codex
+          model: ${{ vars.GH_AW_MODEL_AGENT_CODEX || 'gpt-5.4-mini' }}
+          status: ${{ job.status == 'success' && 'success' || 'failed' }}
+          started_at: ${{ steps.timer.outputs.started_at }}
+          post_comment: 'true'
+          input_tokens: ${{ steps.codex-tokens.outputs.input_tokens }}
+          output_tokens: ${{ steps.codex-tokens.outputs.output_tokens }}
+          cache_read_tokens: ${{ steps.codex-tokens.outputs.cache_read_tokens }}

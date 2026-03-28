@@ -1,0 +1,112 @@
+name: "Codex: Rollout JSONL Compatibility Check"
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Run minimal Codex exec
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: "Reply with only the single word: hello"
+          model: gpt-5.4-mini
+          sandbox: read-only
+          codex-home: /tmp/codex-check
+
+      - name: Verify rollout JSONL structure
+        run: |
+          rollout=$(find /tmp/codex-check/sessions -name "rollout-*.jsonl" 2>/dev/null | sort | tail -1)
+
+          if [ -z "$rollout" ]; then
+            echo "::error::No rollout JSONL found — codex may have changed its session file layout"
+            echo "Contents of /tmp/codex-check:"
+            find /tmp/codex-check -type f 2>/dev/null || echo "(empty)"
+            exit 1
+          fi
+
+          echo "Found rollout: $rollout"
+
+          token_line=$(grep '"token_count"' "$rollout" | tail -1)
+
+          if [ -z "$token_line" ]; then
+            echo "::error::No token_count event in rollout JSONL — codex may have changed its event format"
+            echo "Rollout file contents (last 20 lines):"
+            tail -20 "$rollout"
+            exit 1
+          fi
+
+          input_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.input_tokens // empty')
+
+          if [ -z "$input_tokens" ]; then
+            echo "::error::input_tokens field missing from total_token_usage — codex may have changed the token_count schema"
+            echo "token_count event: $token_line"
+            exit 1
+          fi
+
+          if ! [[ "$input_tokens" =~ ^[0-9]+$ ]] || [ "$input_tokens" -eq 0 ]; then
+            echo "::error::input_tokens is not a positive integer ($input_tokens) — something unexpected in the rollout"
+            echo "token_count event: $token_line"
+            exit 1
+          fi
+
+          output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')
+          echo "✅ Rollout JSONL verified — input_tokens=$input_tokens output_tokens=$output_tokens"
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const title = `⚠️ Codex rollout JSONL compat check failed (${date})`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'codex-compat',
+            });
+
+            if (existing.length > 0) {
+              console.log(`Open codex-compat issue already exists (#${existing[0].number}), skipping.`);
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['codex-compat'],
+              body: [
+                '## Codex rollout JSONL compatibility check failed',
+                '',
+                'The nightly check that verifies `openai/codex-action` still writes token counts',
+                'to the rollout JSONL file has failed. This likely means the `@openai/codex` CLI',
+                'changed its internal session file format.',
+                '',
+                '**Impact:** Codex runs tracked by agentmeter-action will show `—` for cost instead',
+                'of a real value until this is fixed.',
+                '',
+                `**Failed run:** ${runUrl}`,
+                '',
+                '## What to check',
+                '',
+                '1. Look at the failed step logs — it will say which assertion failed',
+                '2. Run `codex exec --ephemeral "say hello"` locally and inspect `~/.codex/sessions/`',
+                '3. If the format changed, update:',
+                '   - The `Extract Codex token usage` step in `.github/workflows/agent-review-codex.yml`',
+                '   - `tryExtractFromCodexJsonl()` in `src/token-extractor.ts`',
+                '   - `CodexTokenEvent` in `src/types.ts`',
+                '   - `docs/challenges.md` section 6',
+              ].join('\n'),
+            });

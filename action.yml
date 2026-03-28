@@ -1,0 +1,95 @@
+name: 'AgentMeter'
+description: 'Track token usage and cost for AI agent runs in GitHub Actions'
+author: 'Foo.software'
+branding:
+  icon: 'zap'
+  color: 'green'
+
+inputs:
+  api_key:
+    description: 'Your AgentMeter API key (from agentmeter.app/dashboard/settings/general)'
+    required: true
+  github_token:
+    description: 'GitHub token for API access (comment posting, artifact download, job listing). Defaults to the built-in GITHUB_TOKEN.'
+    required: false
+    default: ${{ github.token }}
+  model:
+    description: 'The AI model used (e.g. claude-sonnet-4-5, claude-opus-4-6)'
+    required: false
+    default: ''
+  engine:
+    description: 'The AI engine used (claude, copilot, codex). Defaults to claude.'
+    required: false
+    default: 'claude'
+  agent_output:
+    description: 'Stdout from the agent step (for JSON token extraction). Pass the output of your agent step here.'
+    required: false
+    default: ''
+  input_tokens:
+    description: 'Input token count (if known; overrides extraction from agent_output)'
+    required: false
+    default: ''
+  output_tokens:
+    description: 'Output token count (if known; overrides extraction from agent_output)'
+    required: false
+    default: ''
+  cache_read_tokens:
+    description: 'Cache read token count'
+    required: false
+    default: ''
+  cache_write_tokens:
+    description: 'Cache write token count'
+    required: false
+    default: ''
+  turns:
+    description: 'Number of agent turns/iterations (if known)'
+    required: false
+    default: ''
+  status:
+    description: 'Run status: success, failed, timed_out, cancelled, needs_human. Defaults to success.'
+    required: false
+    default: 'success'
+  pr_number:
+    description: 'PR number created by this run (if any)'
+    required: false
+    default: ''
+  api_url:
+    description: 'AgentMeter API base URL (override for self-hosted or testing)'
+    required: false
+    default: 'https://agentmeter.app'
+  post_comment:
+    description: 'Whether to post a cost comment on the PR/issue. Set to false to disable.'
+    required: false
+    default: 'true'
+  trigger_number:
+    description: 'Issue or PR number to comment on. Use when running via workflow_run where GitHub context does not carry the original trigger number.'
+    required: false
+    default: ''
+  trigger_event:
+    description: 'Original event name that triggered the agent workflow (issues, pull_request, etc.). Used with trigger_number to format the correct trigger ref.'
+    required: false
+    default: ''
+  workflow_run_id:
+    description: 'The run ID of the triggering agent workflow (github.event.workflow_run.id). When set, the action automatically fetches the agent-tokens artifact, resolves the trigger PR/issue number, and reads run timestamps — eliminating the need for manual pre-steps in your companion workflow.'
+    required: false
+    default: ''
+  started_at:
+    description: 'ISO 8601 timestamp for when the agent run started. Overrides the action self-measured start time. Use github.event.workflow_run.run_started_at when calling from a workflow_run trigger.'
+    required: false
+    default: ''
+  completed_at:
+    description: 'ISO 8601 timestamp for when the agent run completed. Overrides the action self-measured end time. Use github.event.workflow_run.updated_at when calling from a workflow_run trigger.'
+    required: false
+    default: ''
+
+outputs:
+  run_id:
+    description: 'The AgentMeter run ID (UUID)'
+  total_cost_usd:
+    description: 'Total cost in USD as a decimal string (e.g. "4.52")'
+  dashboard_url:
+    description: 'Link to the run detail page in AgentMeter dashboard'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

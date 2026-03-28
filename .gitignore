@@ -1,0 +1,10 @@
+node_modules/
+*.js.map
+*.d.ts
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.DS_Store
+# dist/ is intentionally committed — required for GitHub Actions to load the bundle

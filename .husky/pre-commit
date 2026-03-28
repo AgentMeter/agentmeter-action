@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Format and fix staged files (Biome)
+npx --no-install lint-staged
+
+# Hard gate: verify all source files pass lint after lint-staged
+# Catches cases where lint-staged's re-staging doesn't pick up all changes
+npm run lint
+
+# Type check
+npm run type-check
+
+# Rebuild dist so the committed bundle is always in sync with src
+npm run build
+git add dist/index.js dist/licenses.txt

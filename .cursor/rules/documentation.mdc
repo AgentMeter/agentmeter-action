@@ -1,0 +1,8 @@
+---
+description: Documentation conventions
+alwaysApply: true
+---
+
+# Documentation
+
+As you build features or add complex logic, document important pieces as markdown files in `./docs/`.

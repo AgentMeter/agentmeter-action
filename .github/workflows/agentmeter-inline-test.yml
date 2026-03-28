@@ -1,0 +1,36 @@
+name: AgentMeter — Inline Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record start time
+        id: timer
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Simulate agent run duration
+        run: sleep 10
+
+      - name: Run AgentMeter action (inline mode)
+        uses: ./
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: claude
+          model: claude-sonnet-4-5
+          status: success
+          input_tokens: 1000
+          output_tokens: 500
+          cache_read_tokens: 8000
+          cache_write_tokens: 200
+          started_at: ${{ steps.timer.outputs.started_at }}
+          post_comment: 'true'

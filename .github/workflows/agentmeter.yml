@@ -1,0 +1,29 @@
+name: AgentMeter — Track Agent Costs
+
+on:
+  workflow_run:
+    workflows:
+      - "Agent: Code Review"
+    types:
+      - completed
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read      # required to list jobs and download artifacts
+      contents: read
+      issues: write      # required to post cost comments
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Track agent run cost
+        uses: ./
+        with:
+          api_key: ${{ secrets.AGENTMETER_API_KEY }}
+          api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}
+          engine: claude
+          model: ${{ vars.GH_AW_MODEL_AGENT_CLAUDE }}
+          status: ${{ github.event.workflow_run.conclusion }}
+          workflow_run_id: ${{ github.event.workflow_run.id }}
+          post_comment: 'true'

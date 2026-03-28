@@ -1,0 +1,24 @@
+---
+description: Git commit conventions and development workflow
+alwaysApply: true
+---
+
+# Commits and Workflow
+
+## Commit messages — conventional commits
+
+`type(scope): description`
+
+Types: `feat` `fix` `docs` `style` `refactor` `test` `chore` `perf` `ci` `build`
+
+## Granular commits
+
+Commit small, cohesive changesets. Always use `git add .`. Push after each commit.
+
+## Type checks before committing
+
+Run `npm run type-check` from the project root before committing.
+
+## .gitignore
+
+When adding new apps, packages, or workspaces, add a thoughtful `.gitignore`.
