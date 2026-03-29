@@ -20,6 +20,20 @@ Add this action after your AI agent step to:
 
 The action **never fails your workflow** — all API calls and comment posts use `core.warning()` for errors, not `core.setFailed()`.
 
+<p align="center">
+  <img src="images/screenshot-agentmeter-github-comment.png" alt="AgentMeter GitHub PR comment showing cost summary" width="700" />
+  <br/><sub>AgentMeter posts a cost summary directly on the PR.</sub>
+</p>
+
+<p align="center">
+  <img src="images/screenshot-agentmeter-run-detail.png" alt="Run detail with token breakdown" width="48%" />
+  &nbsp;
+  <img src="images/screenshot-agentmeter-runs.png" alt="Runs feed dashboard" width="48%" />
+</p>
+<p align="center">
+  <sub>Full token breakdown per run &nbsp;·&nbsp; All runs in one dashboard</sub>
+</p>
+
 ---
 
 ## Quickstart
