@@ -163,6 +163,43 @@ describe('buildCommentBody', () => {
     expect(body).toContain('approximate');
   });
 
+  it('calculates cache hit rate using reads / (reads + writes + input)', () => {
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: {
+        ...baseRun,
+        tokens: {
+          inputTokens: 50,
+          outputTokens: 2172,
+          cacheWriteTokens: 55569,
+          cacheReadTokens: 124794,
+          isApproximate: false,
+        },
+      },
+    });
+    // 124794 / (50 + 55569 + 124794) = 124794 / 180413 ≈ 69%
+    expect(body).toContain('69% cache hit rate');
+  });
+
+  it('does not show cache hit rate when cacheReadTokens is 0', () => {
+    const body = buildCommentBody({
+      apiPricing: testPricing,
+      existingBody: null,
+      runData: {
+        ...baseRun,
+        tokens: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          isApproximate: false,
+        },
+      },
+    });
+    expect(body).not.toContain('cache hit rate');
+  });
+
   it('skips token details when tokens are not provided', () => {
     const body = buildCommentBody({
       apiPricing: testPricing,

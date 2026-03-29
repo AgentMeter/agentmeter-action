@@ -20,6 +20,20 @@ Add this action after your AI agent step to:
 
 The action **never fails your workflow** — all API calls and comment posts use `core.warning()` for errors, not `core.setFailed()`.
 
+<p align="center">
+  <img src="images/screenshot-agentmeter-github-comment.png" alt="AgentMeter GitHub PR comment showing cost summary" width="700" />
+  <br/><sub>AgentMeter posts a cost summary directly on the PR.</sub>
+</p>
+
+<p align="center">
+  <img src="images/screenshot-agentmeter-run-detail.png" alt="Run detail with token breakdown" width="48%" />
+  &nbsp;
+  <img src="images/screenshot-agentmeter-runs.png" alt="Runs feed dashboard" width="48%" />
+</p>
+<p align="center">
+  <sub>Full token breakdown per run &nbsp;·&nbsp; All runs in one dashboard</sub>
+</p>
+
 ---
 
 ## Quickstart
@@ -281,7 +295,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | `api_key` | ✅ | — | Your AgentMeter API key (`am_sk_…`). Get it from [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings). |
 | `model` | ❌ | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
 | `engine` | ❌ | `claude` | The AI engine (`claude`, `codex`). |
-| `status` | ❌ | `success` | Run status: `success`, `failed`, `timed_out`, `cancelled`, `needs_human`. |
+| `status` | ❌ | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
 | `agent_output` | ❌ | `''` | Raw stdout from the agent step. Used to auto-extract token counts from JSON. |
 | `input_tokens` | ❌ | `''` | Explicit input token count. Overrides extraction from `agent_output`. |
 | `output_tokens` | ❌ | `''` | Explicit output token count. |
