@@ -423,4 +423,4 @@ See [docs/challenges.md](docs/challenges.md) for known limitations and caveats.
 
 ## License
 
-MIT — [Foo.software](https://foo.software)
+MIT — [AgentMeter](https://agentmeter.app)
