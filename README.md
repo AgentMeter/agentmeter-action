@@ -2,8 +2,6 @@
 
 Visibility into what your AI agents actually cost. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
 
-> **⚠️ Early Access** — AgentMeter is live at [agentmeter.app](https://agentmeter.app) but actively evolving. Core ingest, dashboard, and PR comment features are stable. Some features are still in progress (budget alerts, CSV export, runs table filters). The API surface may change without notice.
-
 [![CI](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml)
 
 ---
