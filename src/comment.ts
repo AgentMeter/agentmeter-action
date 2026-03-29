@@ -155,10 +155,11 @@ function buildTokenDetails({
   const { tokens, model, turns } = run;
   if (!tokens) return null;
 
+  // Cache hit rate = reads / (reads + writes + input). Cache writes are tokens processed
+  // fresh to populate the cache — they belong in the denominator alongside input tokens.
+  const totalPromptTokens = tokens.cacheReadTokens + tokens.cacheWriteTokens + tokens.inputTokens;
   const cacheHitRate =
-    tokens.cacheReadTokens + tokens.inputTokens > 0
-      ? Math.round((tokens.cacheReadTokens / (tokens.cacheReadTokens + tokens.inputTokens)) * 100)
-      : 0;
+    totalPromptTokens > 0 ? Math.round((tokens.cacheReadTokens / totalPromptTokens) * 100) : 0;
 
   const pricing = getPricing({ apiPricing, model });
   const perM = (count: number, pricePerM: number | null | undefined): string => {
