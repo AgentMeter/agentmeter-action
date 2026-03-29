@@ -1,6 +1,5 @@
 name: 'AgentMeter'
 description: 'Track token usage and cost for AI agent runs in GitHub Actions'
-author: 'Foo.software'
 branding:
   icon: 'zap'
   color: 'green'
