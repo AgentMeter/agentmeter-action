@@ -2,7 +2,7 @@
 
 Visibility into what your AI agents actually cost. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
 
-[![CI](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/foo-software/agentmeter-action/actions/workflows/ci.yml)
+[![CI](https://github.com/agentmeter/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/agentmeter/agentmeter-action/actions/workflows/ci.yml)
 
 ---
 
@@ -54,7 +54,7 @@ Value: your `am_sk_…` key
 ### 4. Add the action to your workflow
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -85,7 +85,7 @@ steps:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
       prompt: "Implement the feature described in this issue"
 
-  - uses: foo-software/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@main
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -109,7 +109,7 @@ steps:
       prompt: "Review this PR for correctness and style"
       model: gpt-5.4-mini
 
-  - uses: foo-software/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@main
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -141,7 +141,7 @@ This records the run with status and duration. Cost will show as `—` because `
       echo "output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')" >> "$GITHUB_OUTPUT"
       echo "cache_read_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.cached_input_tokens // empty')" >> "$GITHUB_OUTPUT"
 
-  - uses: foo-software/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@main
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -158,7 +158,7 @@ This records the run with status and duration. Cost will show as `—` because `
 ### Status tracking only (no token counts)
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -169,7 +169,7 @@ This records the run with status and duration. Cost will show as `—` because `
 ### Disable comment posting
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -214,7 +214,7 @@ jobs:
       issues: write        # required — lets the action post cost comments
       pull-requests: write
     steps:
-      - uses: foo-software/agentmeter-action@main
+      - uses: agentmeter/agentmeter-action@main
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           engine: claude
@@ -356,7 +356,7 @@ If the action runs again on the same PR/issue, it updates the existing comment (
 Place `if: always()` on the AgentMeter step so it runs even when the agent step fails. This ensures failed runs are tracked too.
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}

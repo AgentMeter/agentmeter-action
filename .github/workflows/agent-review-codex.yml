@@ -83,7 +83,7 @@ jobs:
 
       - name: Track with AgentMeter
         if: always()
-        uses: foo-software/agentmeter-action@main
+        uses: agentmeter/agentmeter-action@main
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           api_url: ${{ vars.AGENTMETER_API_URL || 'https://agentmeter.app' }}

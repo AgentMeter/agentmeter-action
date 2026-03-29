@@ -1,6 +1,6 @@
 # AgentMeter Action — Architecture Reference
 
-> This document describes the current architecture and design decisions of the `foo-software/agentmeter-action` GitHub Action.
+> This document describes the current architecture and design decisions of the `agentmeter/agentmeter-action` GitHub Action.
 
 ---
 

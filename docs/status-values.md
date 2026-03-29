@@ -11,7 +11,7 @@ Documents how the `status` input works in the AgentMeter Action and what values 
 When `workflow_run_id` is set, status is resolved **automatically** from the GitHub Actions conclusion of the triggering workflow. The user does not need to pass `status` — the action reads it from the `workflow_run` event payload and normalizes it internally via `normalizeConclusion()`.
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
     workflow_run_id: ${{ github.event.workflow_run.id }}
@@ -23,7 +23,7 @@ When `workflow_run_id` is set, status is resolved **automatically** from the Git
 When running inline (no `workflow_run_id`), the user passes `status` explicitly. It defaults to `'success'` if omitted.
 
 ```yaml
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -65,7 +65,7 @@ The primary custom status. Use it when an agent run completes but requires human
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
     prompt: "..."
 
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}

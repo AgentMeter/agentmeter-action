@@ -17,7 +17,7 @@ The action runs as a step directly after the agent step. GitHub context is fully
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
     prompt: "..."
 
-- uses: foo-software/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@main
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}

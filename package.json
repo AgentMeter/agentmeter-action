@@ -11,10 +11,10 @@
   "homepage": "https://agentmeter.app",
   "repository": {
     "type": "git",
-    "url": "https://github.com/foo-software/agentmeter-action.git"
+    "url": "https://github.com/agentmeter/agentmeter-action.git"
   },
   "bugs": {
-    "url": "https://github.com/foo-software/agentmeter-action/issues"
+    "url": "https://github.com/agentmeter/agentmeter-action/issues"
   },
   "keywords": [
     "github-actions",
