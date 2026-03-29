@@ -1,4 +1,4 @@
-name: 'AgentMeter'
+name: 'AgentMeter Action'
 description: 'Track token usage and cost for AI agent runs in GitHub Actions'
 branding:
   icon: 'zap'
