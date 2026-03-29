@@ -281,7 +281,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | `api_key` | ✅ | — | Your AgentMeter API key (`am_sk_…`). Get it from [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings). |
 | `model` | ❌ | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
 | `engine` | ❌ | `claude` | The AI engine (`claude`, `codex`). |
-| `status` | ❌ | `success` | Run status: `success`, `failed`, `timed_out`, `cancelled`, `needs_human`. |
+| `status` | ❌ | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
 | `agent_output` | ❌ | `''` | Raw stdout from the agent step. Used to auto-extract token counts from JSON. |
 | `input_tokens` | ❌ | `''` | Explicit input token count. Overrides extraction from `agent_output`. |
 | `output_tokens` | ❌ | `''` | Explicit output token count. |
