@@ -27,15 +27,16 @@ The action **never fails your workflow** — all API calls and comment posts use
 
 <p align="center">
   <a href="images/screenshot-agentmeter-run-detail.png">
-    <img src="images/screenshot-agentmeter-run-detail.png" alt="Run detail with token breakdown" width="49%" />
+    <img src="images/screenshot-agentmeter-run-detail.png" alt="Run detail with token breakdown" />
   </a>
-  &nbsp;
-  <a href="images/screenshot-agentmeter-runs.png">
-    <img src="images/screenshot-agentmeter-runs.png" alt="Runs feed dashboard" width="49%" />
-  </a>
+  <br/><sub>Full token breakdown per run</sub>
 </p>
+
 <p align="center">
-  <sub>Full token breakdown per run &nbsp;·&nbsp; All runs in one dashboard</sub>
+  <a href="images/screenshot-agentmeter-runs.png">
+    <img src="images/screenshot-agentmeter-runs.png" alt="Runs feed dashboard" />
+  </a>
+  <br/><sub>All runs in one dashboard</sub>
 </p>
 
 ---
