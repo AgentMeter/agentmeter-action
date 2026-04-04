@@ -297,25 +297,25 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `api_key` | ✅ | — | Your AgentMeter API key (`am_sk_…`). Get it from [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings). |
-| `model` | ❌ | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
-| `engine` | ❌ | `claude` | The AI engine (`claude`, `codex`). |
-| `status` | ❌ | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
-| `agent_output` | ❌ | `''` | Raw stdout from the agent step. Used to auto-extract token counts from JSON. |
-| `input_tokens` | ❌ | `''` | Explicit input token count. Overrides extraction from `agent_output`. |
-| `output_tokens` | ❌ | `''` | Explicit output token count. |
-| `cache_read_tokens` | ❌ | `''` | Cache read token count. |
-| `cache_write_tokens` | ❌ | `''` | Cache write token count. |
-| `turns` | ❌ | `''` | Number of agent turns/iterations. |
-| `pr_number` | ❌ | `''` | PR number created by this run (if any). |
-| `workflow_run_id` | ❌ | `''` | Run ID of the triggering agent workflow (`github.event.workflow_run.id`). Enables auto-resolution of tokens, trigger number, timestamps, and gate logic. |
-| `started_at` | ❌ | `''` | ISO 8601 start timestamp. Overrides self-measured time. |
-| `completed_at` | ❌ | `''` | ISO 8601 completion timestamp. |
-| `trigger_number` | ❌ | `''` | Issue or PR number to comment on. Override when auto-resolution fails. |
-| `trigger_event` | ❌ | `''` | Original event name (`issues`, `pull_request`, etc.). Used with `trigger_number`. |
-| `post_comment` | ❌ | `true` | Set to `false` to skip posting a cost comment. |
-| `api_url` | ❌ | `https://agentmeter.app` | AgentMeter API base URL. Override for local dev or self-hosted. |
-| `github_token` | ❌ | `${{ github.token }}` | GitHub token for comment posting and artifact access. No config needed. |
+| `api_key` | yes | — | Your AgentMeter API key (`am_sk_…`). Get it from [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings). |
+| `model` | no | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
+| `engine` | no | `claude` | The AI engine (`claude`, `codex`). |
+| `status` | no | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
+| `agent_output` | no | `''` | Raw stdout from the agent step. Used to auto-extract token counts from JSON. |
+| `input_tokens` | no | `''` | Explicit input token count. Overrides extraction from `agent_output`. |
+| `output_tokens` | no | `''` | Explicit output token count. |
+| `cache_read_tokens` | no | `''` | Cache read token count. |
+| `cache_write_tokens` | no | `''` | Cache write token count. |
+| `turns` | no | `''` | Number of agent turns/iterations. |
+| `pr_number` | no | `''` | PR number created by this run (if any). |
+| `workflow_run_id` | no | `''` | Run ID of the triggering agent workflow (`github.event.workflow_run.id`). Enables auto-resolution of tokens, trigger number, timestamps, and gate logic. |
+| `started_at` | no | `''` | ISO 8601 start timestamp. Overrides self-measured time. |
+| `completed_at` | no | `''` | ISO 8601 completion timestamp. |
+| `trigger_number` | no | `''` | Issue or PR number to comment on. Override when auto-resolution fails. |
+| `trigger_event` | no | `''` | Original event name (`issues`, `pull_request`, etc.). Used with `trigger_number`. |
+| `post_comment` | no | `true` | Set to `false` to skip posting a cost comment. |
+| `api_url` | no | `https://agentmeter.app` | AgentMeter API base URL. Override for local dev or self-hosted. |
+| `github_token` | no | `${{ github.token }}` | GitHub token for comment posting and artifact access. No config needed. |
 
 ---
 
@@ -334,13 +334,13 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 When the action runs in the context of a PR or issue, it posts (or updates) a cost summary comment:
 
 ```
-AgentMeter
+⚡ AgentMeter
 
 | # | Workflow | Model | Status | Cost | Duration |
 |---|----------|-------|--------|------|----------|
-| 1 | Agent: Code Review | claude-sonnet-4-5 | success | $0.44 | 5m |
+| 1 | Agent: Code Review | claude-sonnet-4-5 | ✅ | $0.44 | 5m |
 
-Token breakdown
+▶ Token breakdown
 
 | Type | Tokens | Cost |
 |------|--------|------|
