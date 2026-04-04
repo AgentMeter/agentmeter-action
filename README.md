@@ -334,13 +334,13 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 When the action runs in the context of a PR or issue, it posts (or updates) a cost summary comment:
 
 ```
-⚡ AgentMeter
+AgentMeter
 
 | # | Workflow | Model | Status | Cost | Duration |
 |---|----------|-------|--------|------|----------|
-| 1 | Agent: Code Review | claude-sonnet-4-5 | ✅ | $0.44 | 5m |
+| 1 | Agent: Code Review | claude-sonnet-4-5 | success | $0.44 | 5m |
 
-▶ Token breakdown
+Token breakdown
 
 | Type | Tokens | Cost |
 |------|--------|------|
