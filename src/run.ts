@@ -165,6 +165,7 @@ export async function run(): Promise<void> {
       githubRunId: inputs.workflowRunId ?? ctx.runId,
       repoFullName: ctx.repoFullName,
       workflowName: resolvedWorkflowName,
+      actor: inputs.actor,
       triggerType,
       triggerRef,
       triggerNumber: resolvedTriggerNumber,

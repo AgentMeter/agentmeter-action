@@ -20,6 +20,8 @@ export interface TokenCountsWithMeta extends TokenCounts {
 export interface ActionInputs {
   /** AgentMeter API key */
   apiKey: string;
+  /** GitHub login of the person who triggered the run */
+  actor: string | null;
   /** AI engine (claude, copilot, codex) */
   engine: string;
   /** Model identifier, or null if not provided */
@@ -84,6 +86,8 @@ export interface IngestPayload {
   repoFullName: string;
   /** Workflow name */
   workflowName: string;
+  /** GitHub login of the person who triggered the run */
+  actor: string | null;
   /** Trigger type */
   triggerType: string;
   /** Trigger reference string */

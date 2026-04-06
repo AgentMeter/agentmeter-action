@@ -8,6 +8,10 @@ inputs:
   api_key:
     description: 'Your AgentMeter API key (from agentmeter.app/dashboard/settings/general)'
     required: true
+  actor:
+    description: 'GitHub login of the person who triggered the run. Defaults to github.actor.'
+    required: false
+    default: ${{ github.actor }}
   github_token:
     description: 'GitHub token for API access (comment posting, artifact download, job listing). Defaults to the built-in GITHUB_TOKEN.'
     required: false

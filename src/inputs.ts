@@ -7,6 +7,7 @@ import type { ActionInputs } from './types';
  */
 export function parseInputs(): ActionInputs {
   const apiKey = core.getInput('api_key', { required: true });
+  const actorRaw = core.getInput('actor');
   const engine = core.getInput('engine') || 'claude';
   const modelRaw = core.getInput('model');
   const agentOutput = core.getInput('agent_output');
@@ -27,6 +28,7 @@ export function parseInputs(): ActionInputs {
 
   return {
     apiKey,
+    actor: actorRaw || null,
     engine,
     model: modelRaw || null,
     agentOutput,
