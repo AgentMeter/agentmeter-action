@@ -196,6 +196,10 @@ If your agent runs in a **separate workflow** (common with [gh-aw](https://githu
 1. **`AGENTMETER_API_KEY` secret** — add at `github.com/<your-org>/<repo>/settings/secrets/actions`
 2. **`actions: read` permission** — required for the action to call the GitHub API internally (list jobs, download artifacts)
 3. **`GITHUB_TOKEN`** — automatically available in every workflow run. No extra config needed.
+4. **`GH_AW_GITHUB_TOKEN`** — a [fine-grained PAT](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token) scoped to your repo with **Contents**, **Pull requests**, and **Issues** set to *Read and write*. Required for `push_to_pull_request_branch` to work. Without this, the auto-token only has `contents: read` and the agent can make changes but cannot push them to the PR branch.
+5. **`GH_AW_GITHUB_MCP_SERVER_TOKEN`** — set to the same PAT as `GH_AW_GITHUB_TOKEN`. Used by the GitHub MCP server so the agent can read issues and PRs during its run.
+
+> **Note:** `GH_AW_GITHUB_TOKEN` and `GH_AW_GITHUB_MCP_SERVER_TOKEN` are gh-aw secrets, not AgentMeter secrets. Add them at the same location: `github.com/<your-org>/<repo>/settings/secrets/actions`. Requires gh-aw **v0.67.4 or later** — earlier versions had a bug where `push_to_pull_request_branch` silently failed with a git credential error regardless of token setup ([github/gh-aw#25345](https://github.com/github/gh-aw/issues/25345)).
 
 ### Companion workflow
 
