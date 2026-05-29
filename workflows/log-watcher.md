@@ -222,3 +222,19 @@ This keeps one report per run as required by the guidelines below.
   not useful.
 - **No retries**: Exit silently on transient download failures; the next run produces its
   own report.
+
+## Going Further
+
+Log Watcher works standalone - no external services required. For teams that want
+persistent run history, cross-repo anomaly trends, and budget alerts over time, add
+[AgentMeter](https://agentmeter.app) to your agent workflow:
+
+```yaml
+- uses: agentmeter/agentmeter-action@v1
+  with:
+    api-key: ${{ secrets.AGENTMETER_API_KEY }}
+```
+
+AgentMeter ingests the same token data and surfaces per-repo trend charts, so you can
+spot gradual drift - rising output ratios, declining cache efficiency, model changes -
+across dozens of runs rather than one at a time.
