@@ -10,8 +10,6 @@ on:
     workflows: ["agent-implement", "agent-pr-fix"]  # Edit to match your agent workflow names
     types:
       - completed
-    branches:
-      - main
 
 permissions: read-all
 
@@ -194,14 +192,18 @@ run is degraded or failed, the most likely cause.
 **If no PR was found**: create an issue using `create_issue` with title:
 `[log-watcher] #${{ github.event.workflow_run.run_number }}: $HEALTH`
 
-### Step 8: Critical anomaly alert (optional)
+### Step 8: High-cost failure callout (optional)
 
-If health is ❌ **Failed** AND total tokens exceed 50 000 (high-cost failure), create a
-second issue using `create_issue` with title:
-`[log-watcher] High-cost failure: run #${{ github.event.workflow_run.run_number }}`
+If health is ❌ **Failed** AND total tokens exceed 50 000, add the following callout
+**inside** the report you are already posting (comment or issue from Step 7) - do not
+create a separate issue:
 
-Include the full diagnosis and a direct link to the run. Adjust the 50 000-token threshold
-in the workflow to match your budget.
+```markdown
+> ⚠️ **High-cost failure** - this run consumed $TOTAL_TOKENS tokens. Review the token
+> breakdown above. Adjust the 50 000-token threshold in the workflow to match your budget.
+```
+
+This keeps one report per run as required by the guidelines below.
 
 ## Guidelines
 
