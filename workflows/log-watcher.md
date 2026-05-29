@@ -133,6 +133,10 @@ Calculate the following metrics across all lines:
 
 Flagged metrics are anomalies - include them in the diagnosis.
 
+Capture the total token count as `$TOTAL_TOKENS` (sum of all `input_tokens`, `output_tokens`,
+`cache_read_input_tokens`, and `cache_creation_input_tokens` across all lines) for use in
+Step 8.
+
 ### Step 5: Determine run health
 
 Assign one of three health levels:
