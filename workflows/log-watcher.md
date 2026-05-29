@@ -10,6 +10,9 @@ on:
     workflows: ["agent-implement", "agent-pr-fix"]  # Edit to match your agent workflow names
     types:
       - completed
+    # branches: [main]  # Uncomment to restrict to specific branches.
+    #                   # Omit (default) to watch all branches, including PR branches,
+    #                   # which is the common gh-aw case.
 
 permissions: read-all
 
