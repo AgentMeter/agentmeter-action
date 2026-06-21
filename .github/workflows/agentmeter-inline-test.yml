@@ -32,5 +32,6 @@ jobs:
           output_tokens: 500
           cache_read_tokens: 8000
           cache_write_tokens: 200
+          turns: 7
           started_at: ${{ steps.timer.outputs.started_at }}
           post_comment: 'true'
