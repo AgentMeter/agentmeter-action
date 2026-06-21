@@ -54,8 +54,8 @@ export async function run(): Promise<void> {
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedTriggerRef: string | null = null;
   let resolvedTriggerType: string | null = null;
-  let resolvedStartedAt = inputs.startedAt || selfStartedAt;
-  let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
+  let resolvedStartedAt: string | null = inputs.startedAt || selfStartedAt;
+  let resolvedCompletedAt: string | null = inputs.completedAt || new Date().toISOString();
   let resolvedWorkflowName = ctx.workflowName;
 
   if (inputs.workflowRunId !== null) {
@@ -67,10 +67,16 @@ export async function run(): Promise<void> {
       );
       return;
     } else {
+      // In workflow_run mode, read conclusion directly from the event payload so the
+      // companion workflow does not need to manually wire status=. The action.yml default
+      // is 'success', which would silently misattribute failed runs if the input is omitted.
+      const payloadConclusion: unknown = github.context.payload['workflow_run']?.conclusion;
+      const rawConclusion =
+        typeof payloadConclusion === 'string' ? payloadConclusion : inputs.status;
       const runData = await resolveWorkflowRun({
         githubToken,
         owner: ctx.owner,
-        rawConclusion: inputs.status,
+        rawConclusion,
         repo: ctx.repo,
         workflowRunId: inputs.workflowRunId,
       });
@@ -85,10 +91,10 @@ export async function run(): Promise<void> {
 
       // Only override with resolved values when explicit inputs aren't set.
       // In workflow_run mode never fall back to selfStartedAt/now — those are the companion
-      // workflow's times, not the agent run's times. Use empty string so durationSeconds
-      // safely resolves to 0 rather than silently recording the wrong run's duration.
-      resolvedStartedAt = inputs.startedAt || runData.startedAt || '';
-      resolvedCompletedAt = inputs.completedAt || runData.completedAt || '';
+      // workflow's times, not the agent run's times. Use null so the payload omits invalid
+      // ISO-8601 values and durationSeconds correctly resolves to null.
+      resolvedStartedAt = inputs.startedAt || runData.startedAt || null;
+      resolvedCompletedAt = inputs.completedAt || runData.completedAt || null;
       if (
         (!inputs.startedAt && !runData.startedAt) ||
         (!inputs.completedAt && !runData.completedAt)
@@ -124,13 +130,21 @@ export async function run(): Promise<void> {
     inputs.outputTokens !== null ||
     inputs.cacheReadTokens !== null ||
     inputs.cacheWriteTokens !== null;
+  // isApproximate is only cleared when the caller explicitly provides all four token fields.
+  // A partial override still leaves some values from extracted/artifact sources, which may
+  // be approximate, so the flag from baseTokens is preserved in that case.
+  const hasAllExplicit =
+    inputs.inputTokens !== null &&
+    inputs.outputTokens !== null &&
+    inputs.cacheReadTokens !== null &&
+    inputs.cacheWriteTokens !== null;
   const tokens =
     hasAnyExplicit || baseTokens !== undefined
       ? {
           cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
           cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
           inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
-          isApproximate: baseTokens?.isApproximate ?? false,
+          isApproximate: hasAllExplicit ? false : (baseTokens?.isApproximate ?? false),
           outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
         }
       : undefined;
@@ -157,18 +171,27 @@ export async function run(): Promise<void> {
   // prefer the resolved type from the triggering run when available.
   const triggerType = resolvedTriggerType || ctx.triggerType || resolvedTriggerEvent || 'other';
 
-  const startMs = new Date(resolvedStartedAt).getTime();
-  const endMs = new Date(resolvedCompletedAt).getTime();
-  const durationSeconds =
+  const startMs = resolvedStartedAt ? new Date(resolvedStartedAt).getTime() : NaN;
+  const endMs = resolvedCompletedAt ? new Date(resolvedCompletedAt).getTime() : NaN;
+  const durationSeconds: number | null =
     Number.isFinite(startMs) && Number.isFinite(endMs)
       ? Math.max(0, Math.round((endMs - startMs) / 1000))
-      : 0;
+      : null;
 
   // Priority: explicit input → artifact (workflow_run_id mode) → extracted from agent_output
   const resolvedTurns =
     inputs.turns ??
     artifactTurns ??
     (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
+
+  // Inline mode: mirror the skip guard that workflow-run mode applies for skipped conclusions.
+  // Without this, a caller passing status='skipped' (e.g. from steps.agent.outcome) would
+  // still ingest a run record.
+  const normalizedStatus = normalizeConclusion(inputs.status);
+  if (normalizedStatus === 'skip') {
+    core.info('AgentMeter: run status is skipped — nothing to track.');
+    return;
+  }
 
   const result = await submitRun({
     apiKey: inputs.apiKey,
@@ -183,12 +206,12 @@ export async function run(): Promise<void> {
       triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
       model: inputs.model,
-      status: normalizeConclusion(inputs.status),
+      status: normalizedStatus,
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: resolvedTurns,
-      startedAt: resolvedStartedAt,
-      completedAt: resolvedCompletedAt,
+      ...(resolvedStartedAt ? { startedAt: resolvedStartedAt } : {}),
+      ...(resolvedCompletedAt ? { completedAt: resolvedCompletedAt } : {}),
       tokens,
     },
   });
@@ -206,13 +229,13 @@ export async function run(): Promise<void> {
       const octokit = github.getOctokit(githubToken);
       await upsertComment({
         apiPricing,
+        issueOrPrNumber: resolvedTriggerNumber,
         octokit,
         owner: ctx.owner,
         repo: ctx.repo,
-        issueOrPrNumber: resolvedTriggerNumber,
         runData: {
           workflowName: resolvedWorkflowName,
-          status: normalizeConclusion(inputs.status),
+          status: normalizedStatus,
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,

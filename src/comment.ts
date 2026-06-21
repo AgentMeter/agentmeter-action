@@ -1,7 +1,9 @@
 import * as core from '@actions/core';
-import type { Octokit } from '@octokit/core';
+import type * as github from '@actions/github';
 import { getPricing, type ModelPricing } from './pricing';
 import type { RunCommentData, TokenCountsWithMeta } from './types';
+
+type Octokit = ReturnType<typeof github.getOctokit>;
 
 const COMMENT_MARKER = '<!-- agentmeter -->';
 
@@ -53,6 +55,8 @@ const TABLE_HEADER = [
 ];
 
 const VISIBLE_RUNS_LIMIT = 5;
+/** Hard cap on stored run rows to stay well under GitHub's 65 536-byte comment limit. */
+const MAX_STORED_RUNS = 20;
 
 /** Minimal run fields needed to render a table row */
 type RunRow = Pick<
@@ -95,8 +99,10 @@ export function buildCommentBody({
   runData: RunCommentData;
 }): string {
   const existingRuns = existingBody ? parseExistingRuns(existingBody) : [];
-  // Newest first: current run at the top
-  const allRuns: RunRow[] = [runData, ...existingRuns];
+  // Newest first: current run at the top; prune oldest entries beyond the cap to avoid
+  // eventually exceeding GitHub's comment size limit on long-lived PRs.
+  const allRuns: RunRow[] = [runData, ...existingRuns].slice(0, MAX_STORED_RUNS);
+  const isCapped = existingRuns.length + 1 > MAX_STORED_RUNS;
 
   const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
   const totalRow =
@@ -118,9 +124,10 @@ export function buildCommentBody({
   ];
 
   if (hasMore) {
+    const summaryLabel = isCapped ? `Last ${MAX_STORED_RUNS} runs` : `All ${allRuns.length} runs`;
     lines.push(
       '<details>',
-      `<summary>All ${allRuns.length} runs</summary>`,
+      `<summary>${summaryLabel}</summary>`,
       '',
       ...TABLE_HEADER,
       ...buildTableRows({ runs: allRuns, startIndex: 1 }),
@@ -269,9 +276,9 @@ function parseTableRows(rawRows: string): ParsedRun[] {
  */
 function parseExistingRuns(body: string): ParsedRun[] {
   try {
-    // When >5 runs exist the full history lives in the collapsible — prefer that
+    // Support both "All N runs" (uncapped) and "Last N runs" (capped) summary labels
     const detailsMatch = body.match(
-      /<summary>All \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
+      /<summary>(?:All|Last) \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
     );
     if (detailsMatch?.[1]) {
       const tableMatch = detailsMatch[1].match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);
@@ -292,19 +299,22 @@ function parseExistingRuns(body: string): ParsedRun[] {
  * Returns the comment ID if found, or null.
  */
 async function findExistingComment({
+  issueOrPrNumber,
   octokit,
   owner,
   repo,
-  issueOrPrNumber,
 }: {
-  octokit: Octokit;
-  owner: string;
-  repo: string;
+  /** Issue or PR number to search comments on */
   issueOrPrNumber: number;
+  /** GitHub Octokit instance */
+  octokit: Octokit;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ id: number; body: string } | null> {
   try {
-    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
-    const comments = await gh.paginate(gh.rest.issues.listComments, {
+    const comments = await octokit.paginate(octokit.rest.issues.listComments, {
       owner,
       repo,
       issue_number: issueOrPrNumber,
@@ -330,31 +340,31 @@ async function findExistingComment({
  */
 export async function upsertComment({
   apiPricing,
+  issueOrPrNumber,
   octokit,
   owner,
   repo,
-  issueOrPrNumber,
   runData,
 }: {
   /** Pricing fetched from the AgentMeter API */
   apiPricing: Record<string, ModelPricing>;
+  /** Issue or PR number to comment on */
+  issueOrPrNumber: number;
   /** GitHub Octokit instance */
   octokit: Octokit;
   /** Repository owner */
   owner: string;
   /** Repository name */
   repo: string;
-  /** Issue or PR number to comment on */
-  issueOrPrNumber: number;
   /** Run data for the new comment row */
   runData: RunCommentData;
 }): Promise<void> {
   try {
     const existing = await findExistingComment({
+      issueOrPrNumber,
       octokit,
       owner,
       repo,
-      issueOrPrNumber,
     });
 
     const body = buildCommentBody({
@@ -363,17 +373,15 @@ export async function upsertComment({
       runData,
     });
 
-    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
-
     if (existing) {
-      await gh.rest.issues.updateComment({
+      await octokit.rest.issues.updateComment({
         owner,
         repo,
         comment_id: existing.id,
         body,
       });
     } else {
-      await gh.rest.issues.createComment({
+      await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueOrPrNumber,

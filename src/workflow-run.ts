@@ -90,12 +90,12 @@ export async function resolveWorkflowRun({
   const completedAt = run?.updated_at ?? null;
 
   const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
-    pullRequests: run?.pull_requests ?? [],
+    event: run?.event ?? '',
     headBranch: run?.head_branch ?? '',
     headSha: run?.head_sha ?? '',
-    event: run?.event ?? '',
     octokit,
     owner,
+    pullRequests: run?.pull_requests ?? [],
     repo,
   });
 
@@ -165,6 +165,8 @@ function emptyResult({
  * Checks whether the terminal "conclusion" job in a gh-aw workflow run has
  * completed. workflow_run fires for each job completion (~5 times per run),
  * so we use this to ensure we only ingest once per agent run.
+ * Re-checks once after a brief delay when the job reads in_progress, to handle
+ * the case where the jobs API briefly lags behind the workflow_run event.
  */
 async function checkConclusionJobCompleted({
   octokit,
@@ -181,43 +183,77 @@ async function checkConclusionJobCompleted({
   /** Workflow run ID */
   workflowRunId: number;
 }): Promise<boolean> {
-  const attemptCheck = async (): Promise<boolean> => {
+  const queryConclusion = async (): Promise<'not_found' | 'in_progress' | 'completed'> => {
     const { data } = await octokit.rest.actions.listJobsForWorkflowRun({
       owner,
       repo,
       run_id: workflowRunId,
     });
     const conclusionJob = data.jobs.find((j) => j.name === 'conclusion');
-    if (!conclusionJob) {
-      // No conclusion job means this is not a gh-aw workflow — proceed without gating.
-      core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
-      return true;
-    }
-    if (conclusionJob.status !== 'completed') {
-      core.info('AgentMeter: conclusion job not yet completed — skipping this firing.');
-      return false;
-    }
-    core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
-    return true;
+    if (!conclusionJob) return 'not_found';
+    return conclusionJob.status === 'completed' ? 'completed' : 'in_progress';
   };
 
+  let status: 'not_found' | 'in_progress' | 'completed';
   try {
-    return await attemptCheck();
+    status = await queryConclusion();
   } catch (firstError) {
     core.warning(
       `AgentMeter: could not check conclusion job status (attempt 1): ${firstError}. Retrying…`
     );
     try {
-      return await attemptCheck();
+      status = await queryConclusion();
     } catch (secondError) {
-      // Both attempts failed — fail closed to prevent duplicate ingest on persistent API errors
-      // (e.g. under-scoped token). The retry above already handled transient one-shot failures.
-      core.warning(
-        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Skipping.`
+      core.notice(
+        `AgentMeter: could not check conclusion job status after 2 attempts (${secondError}). Skipping ingest for this firing. If runs are systematically missing, check that GITHUB_TOKEN has actions:read scope.`
       );
       return false;
     }
   }
+
+  if (status === 'completed') {
+    core.info('AgentMeter: conclusion job completed — proceeding.');
+    return true;
+  }
+
+  // Re-check once after a brief delay for both in_progress and not_found:
+  // - in_progress: jobs API may lag behind the workflow_run event on the terminal firing
+  // - not_found: a transiently stale jobs API could return an empty list for a real gh-aw
+  //   run, bypassing the duplicate-prevention gate if we proceed immediately
+  core.info(
+    status === 'not_found'
+      ? 'AgentMeter: no conclusion job on first read — confirming in 3s (possible stale jobs API).'
+      : 'AgentMeter: conclusion job in_progress — re-checking in 3s for jobs-API lag.'
+  );
+  await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
+  let recheck: 'not_found' | 'in_progress' | 'completed';
+  try {
+    recheck = await queryConclusion();
+  } catch (recheckError) {
+    if (status === 'not_found') {
+      // Original read showed not_found and re-check failed — treat as non-gh-aw and proceed
+      core.info('AgentMeter: re-check failed; treating as non-gh-aw workflow, proceeding.');
+      return true;
+    }
+    core.warning(
+      `AgentMeter: could not re-check conclusion job status: ${recheckError}. Skipping.`
+    );
+    return false;
+  }
+
+  if (recheck === 'completed') {
+    core.info('AgentMeter: conclusion job completed after re-check — proceeding.');
+    return true;
+  }
+  if (recheck === 'not_found') {
+    // Confirmed on second read — not a gh-aw workflow
+    core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
+    return true;
+  }
+  core.info(
+    'AgentMeter: conclusion job still not completed after re-check — skipping this firing.'
+  );
+  return false;
 }
 
 /**
@@ -244,7 +280,7 @@ async function fetchRun({
   head_sha?: string | null;
   event?: string | null;
   name?: string | null;
-  pull_requests?: Array<{ number: number }>;
+  pull_requests?: Array<{ headSha: string; number: number }>;
 } | null> {
   try {
     const { data } = await octokit.rest.actions.getWorkflowRun({
@@ -259,7 +295,10 @@ async function fetchRun({
       head_sha: data.head_sha,
       event: data.event,
       name: data.name,
-      pull_requests: (data.pull_requests ?? []).map((pr) => ({ number: pr.number })),
+      pull_requests: (data.pull_requests ?? []).map((pr) => ({
+        headSha: pr.head.sha,
+        number: pr.number,
+      })),
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to fetch workflow run ${workflowRunId}: ${error}`);
@@ -274,26 +313,26 @@ async function fetchRun({
  * empty for workflow_run events), then the branch name convention for issues.
  */
 async function resolveTrigger({
+  event,
   headBranch,
   headSha,
-  event,
   octokit,
   owner,
   pullRequests,
   repo,
 }: {
+  /** Event that triggered the original workflow run */
+  event: string;
   /** Head branch name of the triggering run */
   headBranch: string;
   /** Head commit SHA of the triggering run — used to validate the PR fallback match */
   headSha: string;
-  /** Event that triggered the original workflow run */
-  event: string;
   /** Authenticated Octokit instance */
   octokit: ReturnType<typeof github.getOctokit>;
   /** Repository owner */
   owner: string;
   /** Pull requests associated with the triggering run */
-  pullRequests: Array<{ number: number }>;
+  pullRequests: Array<{ headSha: string; number: number }>;
   /** Repository name */
   repo: string;
 }): Promise<{
@@ -302,14 +341,19 @@ async function resolveTrigger({
   triggerType: string;
   triggerRef: string | null;
 }> {
-  if (pullRequests.length > 0 && pullRequests[0]) {
-    const num = pullRequests[0].number;
-    return {
-      triggerNumber: num,
-      triggerEvent: event,
-      triggerType: normalizeTriggerType({ event, isPR: true }),
-      triggerRef: `PR #${num}`,
-    };
+  if (pullRequests.length > 0) {
+    // Validate by head SHA when available — same logic as the branch-lookup fallback below.
+    // Without this, a stale first entry or reused branch could attribute the run to the wrong PR.
+    const match = headSha ? pullRequests.find((pr) => pr.headSha === headSha) : pullRequests[0];
+    if (match) {
+      return {
+        triggerNumber: match.number,
+        triggerEvent: event,
+        triggerType: normalizeTriggerType({ event, isPR: true }),
+        triggerRef: `PR #${match.number}`,
+      };
+    }
+    // headSha provided but no entry matched — fall through to branch-based lookup
   }
 
   // GitHub frequently leaves pull_requests[] empty for workflow_run events even when the
@@ -420,10 +464,10 @@ async function fetchAgentTokens({
     const agentTokensArtifact = artifactList.artifacts.find((a) => a.name === 'agent-tokens');
     if (agentTokensArtifact) {
       const result = await parseAgentTokensArtifact({
+        artifact: agentTokensArtifact,
         octokit,
         owner,
         repo,
-        artifact: agentTokensArtifact,
       });
       if (result.tokens !== undefined) return result;
     }
@@ -435,7 +479,7 @@ async function fetchAgentTokens({
       core.info(
         'AgentMeter: no agent-tokens artifact — falling back to agent-stdio.log from agent artifact.'
       );
-      const result = await parseAgentStdioLog({ octokit, owner, repo, artifact: agentArtifact });
+      const result = await parseAgentStdioLog({ artifact: agentArtifact, octokit, owner, repo });
       if (result.tokens !== undefined) return result;
     }
 
@@ -451,15 +495,19 @@ async function fetchAgentTokens({
  * Downloads and parses the dedicated agent-tokens artifact.
  */
 async function parseAgentTokensArtifact({
+  artifact,
   octokit,
   owner,
   repo,
-  artifact,
 }: {
-  octokit: ReturnType<typeof github.getOctokit>;
-  owner: string;
-  repo: string;
+  /** Artifact metadata containing the artifact ID */
   artifact: { id: number };
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
     const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
@@ -469,7 +517,7 @@ async function parseAgentTokensArtifact({
       archive_format: 'zip',
     });
 
-    const parsed = await parseAgentTokensZip(downloadData as ArrayBuffer);
+    const parsed = parseAgentTokensZip(downloadData as ArrayBuffer);
     if (!parsed) return { tokens: undefined, artifactTurns: null };
 
     return {
@@ -493,15 +541,19 @@ async function parseAgentTokensArtifact({
  * output to recover token usage and turn count for gh-aw claude workflows.
  */
 async function parseAgentStdioLog({
+  artifact,
   octokit,
   owner,
   repo,
-  artifact,
 }: {
-  octokit: ReturnType<typeof github.getOctokit>;
-  owner: string;
-  repo: string;
+  /** Artifact metadata containing the artifact ID */
   artifact: { id: number };
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
     const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
@@ -541,7 +593,7 @@ async function parseAgentStdioLog({
 /**
  * Extracts and parses agent-tokens.json from a zip ArrayBuffer using fflate.
  */
-async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArtifact | null> {
+function parseAgentTokensZip(zipData: ArrayBuffer): AgentTokensArtifact | null {
   try {
     const unzipped = unzipSync(new Uint8Array(zipData));
     const file = unzipped['agent-tokens.json'];

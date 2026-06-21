@@ -82,26 +82,79 @@ describe('resolveWorkflowRun', () => {
     expect(result.completedAt).toBe('2026-03-09T10:05:00Z');
   });
 
-  it('skips when conclusion job is not yet completed', async () => {
+  it('skips when conclusion job is not yet completed after re-check', async () => {
+    vi.useFakeTimers();
     const octokit = makeOctokit({
       jobs: [{ name: 'conclusion', status: 'in_progress' }],
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun(baseArgs);
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
 
     expect(result.shouldProceed).toBe(false);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('proceeds when conclusion job completes on re-check after jobs-API lag', async () => {
+    vi.useFakeTimers();
+    const octokit = makeOctokit({});
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'in_progress' }] },
+      })
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'completed', conclusion: 'success' }] },
+      });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
+
+    expect(result.shouldProceed).toBe(true);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
   });
 
   it('proceeds when no conclusion job exists (non-gh-aw workflow)', async () => {
+    vi.useFakeTimers();
     const octokit = makeOctokit({
       jobs: [{ name: 'agent', status: 'completed' }],
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun(baseArgs);
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
 
     expect(result.shouldProceed).toBe(true);
+    // Both initial read and re-check confirm not_found
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('proceeds when conclusion job appears on re-check after stale not_found read', async () => {
+    vi.useFakeTimers();
+    const octokit = makeOctokit({});
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { jobs: [] } })
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'completed', conclusion: 'success' }] },
+      });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
+
+    expect(result.shouldProceed).toBe(true);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
   });
 
   it('skips immediately for skipped conclusion without API calls', async () => {
@@ -141,6 +194,46 @@ describe('resolveWorkflowRun', () => {
 
     expect(result.triggerNumber).toBe(42);
     expect(result.triggerEvent).toBe('pull_request');
+  });
+
+  it('validates pull_requests[0] by head SHA when headSha is available', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        head_sha: 'correct-sha',
+        event: 'pull_request',
+        pull_requests: [
+          { number: 99, head: { sha: 'correct-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+          { number: 88, head: { sha: 'other-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+        ],
+      },
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBe(99);
+  });
+
+  it('falls through to branch lookup when pull_requests entries do not match headSha', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        head_branch: 'feat/pr-branch',
+        head_sha: 'correct-sha',
+        event: 'pull_request',
+        pull_requests: [
+          { number: 77, head: { sha: 'stale-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+        ],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [{ number: 55, head: { sha: 'correct-sha' } }],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    // SHA mismatch in pull_requests → branch lookup finds the correct PR
+    expect(result.triggerNumber).toBe(55);
   });
 
   it('resolves trigger number via PR list API when pull_requests array is empty', async () => {
@@ -379,7 +472,7 @@ describe('resolveWorkflowRun', () => {
     expect(result.tokens?.cacheWriteTokens).toBe(0);
   });
 
-  it('retries once then skips when listJobsForWorkflowRun fails twice (fail closed)', async () => {
+  it('skips and emits a notice when listJobsForWorkflowRun fails twice (fail closed)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -390,7 +483,7 @@ describe('resolveWorkflowRun', () => {
 
     expect(result.shouldProceed).toBe(false);
     expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
+    expect(vi.mocked(core.notice)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')
     );
   });

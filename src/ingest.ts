@@ -2,6 +2,19 @@ import * as core from '@actions/core';
 import type { IngestPayload, IngestResponse } from './types';
 
 /**
+ * Validates the shape of the ingest API response before trusting its fields.
+ */
+function isValidIngestResponse(data: unknown): data is IngestResponse {
+  if (typeof data !== 'object' || data === null) return false;
+  const o = data as Record<string, unknown>;
+  return (
+    typeof o['id'] === 'string' &&
+    typeof o['totalCostCents'] === 'number' &&
+    typeof o['dashboardUrl'] === 'string'
+  );
+}
+
+/**
  * Makes a fetch call with one retry on network failure.
  * Does not retry on 4xx/5xx HTTP responses.
  */
@@ -47,7 +60,12 @@ export async function submitRun({
       return null;
     }
 
-    return (await response.json()) as IngestResponse;
+    const data: unknown = await response.json();
+    if (!isValidIngestResponse(data)) {
+      core.warning('AgentMeter ingest returned an unexpected response shape. Continuing.');
+      return null;
+    }
+    return data;
   } catch (error) {
     core.warning(`AgentMeter ingest failed: ${error}. Continuing.`);
     return null;
