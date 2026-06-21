@@ -211,38 +211,49 @@ async function checkConclusionJobCompleted({
     }
   }
 
-  if (status === 'not_found') {
-    // No conclusion job means this is not a gh-aw workflow — proceed without gating.
-    core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
-    return true;
-  }
-
   if (status === 'completed') {
     core.info('AgentMeter: conclusion job completed — proceeding.');
     return true;
   }
 
-  // status === 'in_progress' — re-check once after a brief delay.
-  // The workflow_run event can arrive before the jobs API reflects the terminal job state,
-  // so a single stale read should not permanently drop the ingest.
-  core.info('AgentMeter: conclusion job in_progress — re-checking in 3s for jobs-API lag.');
+  // Re-check once after a brief delay for both in_progress and not_found:
+  // - in_progress: jobs API may lag behind the workflow_run event on the terminal firing
+  // - not_found: a transiently stale jobs API could return an empty list for a real gh-aw
+  //   run, bypassing the duplicate-prevention gate if we proceed immediately
+  core.info(
+    status === 'not_found'
+      ? 'AgentMeter: no conclusion job on first read — confirming in 3s (possible stale jobs API).'
+      : 'AgentMeter: conclusion job in_progress — re-checking in 3s for jobs-API lag.'
+  );
   await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
+  let recheck: 'not_found' | 'in_progress' | 'completed';
   try {
-    const recheck = await queryConclusion();
-    if (recheck === 'completed' || recheck === 'not_found') {
-      core.info('AgentMeter: conclusion job completed after re-check — proceeding.');
+    recheck = await queryConclusion();
+  } catch (recheckError) {
+    if (status === 'not_found') {
+      // Original read showed not_found and re-check failed — treat as non-gh-aw and proceed
+      core.info('AgentMeter: re-check failed; treating as non-gh-aw workflow, proceeding.');
       return true;
     }
-    core.info(
-      'AgentMeter: conclusion job still not completed after re-check — skipping this firing.'
-    );
-    return false;
-  } catch (recheckError) {
     core.warning(
       `AgentMeter: could not re-check conclusion job status: ${recheckError}. Skipping.`
     );
     return false;
   }
+
+  if (recheck === 'completed') {
+    core.info('AgentMeter: conclusion job completed after re-check — proceeding.');
+    return true;
+  }
+  if (recheck === 'not_found') {
+    // Confirmed on second read — not a gh-aw workflow
+    core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
+    return true;
+  }
+  core.info(
+    'AgentMeter: conclusion job still not completed after re-check — skipping this firing.'
+  );
+  return false;
 }
 
 /**

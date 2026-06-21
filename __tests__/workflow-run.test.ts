@@ -121,14 +121,40 @@ describe('resolveWorkflowRun', () => {
   });
 
   it('proceeds when no conclusion job exists (non-gh-aw workflow)', async () => {
+    vi.useFakeTimers();
     const octokit = makeOctokit({
       jobs: [{ name: 'agent', status: 'completed' }],
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun(baseArgs);
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
 
     expect(result.shouldProceed).toBe(true);
+    // Both initial read and re-check confirm not_found
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('proceeds when conclusion job appears on re-check after stale not_found read', async () => {
+    vi.useFakeTimers();
+    const octokit = makeOctokit({});
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { jobs: [] } })
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'completed', conclusion: 'success' }] },
+      });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
+
+    expect(result.shouldProceed).toBe(true);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
   });
 
   it('skips immediately for skipped conclusion without API calls', async () => {
