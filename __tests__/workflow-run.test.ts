@@ -379,7 +379,7 @@ describe('resolveWorkflowRun', () => {
     expect(result.tokens?.cacheWriteTokens).toBe(0);
   });
 
-  it('skips when listJobsForWorkflowRun fails (fail closed to prevent double-ingest)', async () => {
+  it('proceeds after two listJobsForWorkflowRun failures (avoids silent data loss)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -388,7 +388,7 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.shouldProceed).toBe(false);
+    expect(result.shouldProceed).toBe(true);
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')
     );
