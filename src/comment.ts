@@ -1,7 +1,9 @@
 import * as core from '@actions/core';
-import type { Octokit } from '@octokit/core';
+import type * as github from '@actions/github';
 import { getPricing, type ModelPricing } from './pricing';
 import type { RunCommentData, TokenCountsWithMeta } from './types';
+
+type Octokit = ReturnType<typeof github.getOctokit>;
 
 const COMMENT_MARKER = '<!-- agentmeter -->';
 
@@ -292,19 +294,22 @@ function parseExistingRuns(body: string): ParsedRun[] {
  * Returns the comment ID if found, or null.
  */
 async function findExistingComment({
+  issueOrPrNumber,
   octokit,
   owner,
   repo,
-  issueOrPrNumber,
 }: {
-  octokit: Octokit;
-  owner: string;
-  repo: string;
+  /** Issue or PR number to search comments on */
   issueOrPrNumber: number;
+  /** GitHub Octokit instance */
+  octokit: Octokit;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ id: number; body: string } | null> {
   try {
-    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
-    const comments = await gh.paginate(gh.rest.issues.listComments, {
+    const comments = await octokit.paginate(octokit.rest.issues.listComments, {
       owner,
       repo,
       issue_number: issueOrPrNumber,
@@ -330,31 +335,31 @@ async function findExistingComment({
  */
 export async function upsertComment({
   apiPricing,
+  issueOrPrNumber,
   octokit,
   owner,
   repo,
-  issueOrPrNumber,
   runData,
 }: {
   /** Pricing fetched from the AgentMeter API */
   apiPricing: Record<string, ModelPricing>;
+  /** Issue or PR number to comment on */
+  issueOrPrNumber: number;
   /** GitHub Octokit instance */
   octokit: Octokit;
   /** Repository owner */
   owner: string;
   /** Repository name */
   repo: string;
-  /** Issue or PR number to comment on */
-  issueOrPrNumber: number;
   /** Run data for the new comment row */
   runData: RunCommentData;
 }): Promise<void> {
   try {
     const existing = await findExistingComment({
+      issueOrPrNumber,
       octokit,
       owner,
       repo,
-      issueOrPrNumber,
     });
 
     const body = buildCommentBody({
@@ -363,17 +368,15 @@ export async function upsertComment({
       runData,
     });
 
-    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
-
     if (existing) {
-      await gh.rest.issues.updateComment({
+      await octokit.rest.issues.updateComment({
         owner,
         repo,
         comment_id: existing.id,
         body,
       });
     } else {
-      await gh.rest.issues.createComment({
+      await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueOrPrNumber,

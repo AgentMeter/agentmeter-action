@@ -90,12 +90,12 @@ export async function resolveWorkflowRun({
   const completedAt = run?.updated_at ?? null;
 
   const { triggerNumber, triggerEvent, triggerType, triggerRef } = await resolveTrigger({
-    pullRequests: run?.pull_requests ?? [],
+    event: run?.event ?? '',
     headBranch: run?.head_branch ?? '',
     headSha: run?.head_sha ?? '',
-    event: run?.event ?? '',
     octokit,
     owner,
+    pullRequests: run?.pull_requests ?? [],
     repo,
   });
 
@@ -274,20 +274,20 @@ async function fetchRun({
  * empty for workflow_run events), then the branch name convention for issues.
  */
 async function resolveTrigger({
+  event,
   headBranch,
   headSha,
-  event,
   octokit,
   owner,
   pullRequests,
   repo,
 }: {
+  /** Event that triggered the original workflow run */
+  event: string;
   /** Head branch name of the triggering run */
   headBranch: string;
   /** Head commit SHA of the triggering run — used to validate the PR fallback match */
   headSha: string;
-  /** Event that triggered the original workflow run */
-  event: string;
   /** Authenticated Octokit instance */
   octokit: ReturnType<typeof github.getOctokit>;
   /** Repository owner */
@@ -420,10 +420,10 @@ async function fetchAgentTokens({
     const agentTokensArtifact = artifactList.artifacts.find((a) => a.name === 'agent-tokens');
     if (agentTokensArtifact) {
       const result = await parseAgentTokensArtifact({
+        artifact: agentTokensArtifact,
         octokit,
         owner,
         repo,
-        artifact: agentTokensArtifact,
       });
       if (result.tokens !== undefined) return result;
     }
@@ -435,7 +435,7 @@ async function fetchAgentTokens({
       core.info(
         'AgentMeter: no agent-tokens artifact — falling back to agent-stdio.log from agent artifact.'
       );
-      const result = await parseAgentStdioLog({ octokit, owner, repo, artifact: agentArtifact });
+      const result = await parseAgentStdioLog({ artifact: agentArtifact, octokit, owner, repo });
       if (result.tokens !== undefined) return result;
     }
 
@@ -451,15 +451,19 @@ async function fetchAgentTokens({
  * Downloads and parses the dedicated agent-tokens artifact.
  */
 async function parseAgentTokensArtifact({
+  artifact,
   octokit,
   owner,
   repo,
-  artifact,
 }: {
-  octokit: ReturnType<typeof github.getOctokit>;
-  owner: string;
-  repo: string;
+  /** Artifact metadata containing the artifact ID */
   artifact: { id: number };
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
     const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
@@ -469,7 +473,7 @@ async function parseAgentTokensArtifact({
       archive_format: 'zip',
     });
 
-    const parsed = await parseAgentTokensZip(downloadData as ArrayBuffer);
+    const parsed = parseAgentTokensZip(downloadData as ArrayBuffer);
     if (!parsed) return { tokens: undefined, artifactTurns: null };
 
     return {
@@ -493,15 +497,19 @@ async function parseAgentTokensArtifact({
  * output to recover token usage and turn count for gh-aw claude workflows.
  */
 async function parseAgentStdioLog({
+  artifact,
   octokit,
   owner,
   repo,
-  artifact,
 }: {
-  octokit: ReturnType<typeof github.getOctokit>;
-  owner: string;
-  repo: string;
+  /** Artifact metadata containing the artifact ID */
   artifact: { id: number };
+  /** Authenticated Octokit instance */
+  octokit: ReturnType<typeof github.getOctokit>;
+  /** Repository owner */
+  owner: string;
+  /** Repository name */
+  repo: string;
 }): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
     const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
@@ -541,7 +549,7 @@ async function parseAgentStdioLog({
 /**
  * Extracts and parses agent-tokens.json from a zip ArrayBuffer using fflate.
  */
-async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArtifact | null> {
+function parseAgentTokensZip(zipData: ArrayBuffer): AgentTokensArtifact | null {
   try {
     const unzipped = unzipSync(new Uint8Array(zipData));
     const file = unzipped['agent-tokens.json'];

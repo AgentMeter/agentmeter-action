@@ -159,10 +159,10 @@ export async function run(): Promise<void> {
 
   const startMs = new Date(resolvedStartedAt).getTime();
   const endMs = new Date(resolvedCompletedAt).getTime();
-  const durationSeconds =
+  const durationSeconds: number | null =
     Number.isFinite(startMs) && Number.isFinite(endMs)
       ? Math.max(0, Math.round((endMs - startMs) / 1000))
-      : 0;
+      : null;
 
   // Priority: explicit input → artifact (workflow_run_id mode) → extracted from agent_output
   const resolvedTurns =
@@ -206,10 +206,10 @@ export async function run(): Promise<void> {
       const octokit = github.getOctokit(githubToken);
       await upsertComment({
         apiPricing,
+        issueOrPrNumber: resolvedTriggerNumber,
         octokit,
         owner: ctx.owner,
         repo: ctx.repo,
-        issueOrPrNumber: resolvedTriggerNumber,
         runData: {
           workflowName: resolvedWorkflowName,
           status: normalizeConclusion(inputs.status),
