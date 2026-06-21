@@ -184,6 +184,15 @@ export async function run(): Promise<void> {
     artifactTurns ??
     (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
 
+  // Inline mode: mirror the skip guard that workflow-run mode applies for skipped conclusions.
+  // Without this, a caller passing status='skipped' (e.g. from steps.agent.outcome) would
+  // still ingest a run record.
+  const normalizedStatus = normalizeConclusion(inputs.status);
+  if (normalizedStatus === 'skip') {
+    core.info('AgentMeter: run status is skipped — nothing to track.');
+    return;
+  }
+
   const result = await submitRun({
     apiKey: inputs.apiKey,
     apiUrl: inputs.apiUrl,
@@ -197,7 +206,7 @@ export async function run(): Promise<void> {
       triggerNumber: resolvedTriggerNumber,
       engine: inputs.engine,
       model: inputs.model,
-      status: normalizeConclusion(inputs.status),
+      status: normalizedStatus,
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: resolvedTurns,
@@ -226,7 +235,7 @@ export async function run(): Promise<void> {
         repo: ctx.repo,
         runData: {
           workflowName: resolvedWorkflowName,
-          status: normalizeConclusion(inputs.status),
+          status: normalizedStatus,
           totalCostCents: result.totalCostCents,
           tokens,
           model: inputs.model,
