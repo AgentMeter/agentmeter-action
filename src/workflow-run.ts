@@ -21,6 +21,8 @@ export interface WorkflowRunData {
   triggerRef: string | null;
   /** Token counts extracted from the agent-tokens artifact, if available */
   tokens: TokenCountsWithMeta | undefined;
+  /** Turn count extracted from the agent-tokens artifact, if available */
+  artifactTurns: number | null;
   /**
    * Whether the action should proceed with ingesting this run.
    * False when the triggering workflow's terminal job hasn't completed yet
@@ -96,7 +98,7 @@ export async function resolveWorkflowRun({
     repo,
   });
 
-  const tokens = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
+  const { tokens, artifactTurns } = await fetchAgentTokens({ octokit, owner, repo, workflowRunId });
 
   return {
     startedAt,
@@ -106,6 +108,7 @@ export async function resolveWorkflowRun({
     triggerType,
     triggerRef,
     tokens,
+    artifactTurns,
     shouldProceed: true,
     normalizedStatus,
     workflowName: run?.name ?? '',
@@ -150,6 +153,7 @@ function emptyResult({
     triggerType: 'other',
     triggerRef: null,
     tokens: undefined,
+    artifactTurns: null,
     shouldProceed,
     normalizedStatus,
     workflowName: '',
@@ -389,7 +393,7 @@ async function fetchAgentTokens({
   repo: string;
   /** Workflow run ID */
   workflowRunId: number;
-}): Promise<TokenCountsWithMeta | undefined> {
+}): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
     // List artifacts for the run and find agent-tokens
     const { data: artifactList } = await octokit.rest.actions.listWorkflowRunArtifacts({
@@ -401,7 +405,7 @@ async function fetchAgentTokens({
     const artifact = artifactList.artifacts.find((a) => a.name === 'agent-tokens');
     if (!artifact) {
       core.info('AgentMeter: no agent-tokens artifact found — token data will be omitted.');
-      return undefined;
+      return { tokens: undefined, artifactTurns: null };
     }
 
     // Download the artifact as a zip (GitHub returns a redirect URL)
@@ -414,18 +418,21 @@ async function fetchAgentTokens({
 
     // downloadData is the zip bytes as an ArrayBuffer
     const parsed = await parseAgentTokensZip(downloadData as ArrayBuffer);
-    if (!parsed) return undefined;
+    if (!parsed) return { tokens: undefined, artifactTurns: null };
 
     return {
-      inputTokens: parsed.input_tokens,
-      outputTokens: parsed.output_tokens,
-      cacheReadTokens: parsed.cache_read_tokens,
-      cacheWriteTokens: parsed.cache_write_tokens,
-      isApproximate: false,
+      tokens: {
+        inputTokens: parsed.input_tokens,
+        outputTokens: parsed.output_tokens,
+        cacheReadTokens: parsed.cache_read_tokens,
+        cacheWriteTokens: parsed.cache_write_tokens,
+        isApproximate: false,
+      },
+      artifactTurns: typeof parsed.turns === 'number' ? parsed.turns : null,
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to fetch agent-tokens artifact: ${error}`);
-    return undefined;
+    return { tokens: undefined, artifactTurns: null };
   }
 }
 
@@ -452,6 +459,7 @@ async function parseAgentTokensZip(zipData: ArrayBuffer): Promise<AgentTokensArt
         typeof parsed.cache_write_tokens === 'number' ? parsed.cache_write_tokens : 0,
       input_tokens: parsed.input_tokens,
       output_tokens: typeof parsed.output_tokens === 'number' ? parsed.output_tokens : 0,
+      ...(typeof parsed.turns === 'number' ? { turns: parsed.turns } : {}),
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to parse agent-tokens zip: ${error}`);

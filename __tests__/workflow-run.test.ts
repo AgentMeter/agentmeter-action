@@ -301,6 +301,38 @@ describe('resolveWorkflowRun', () => {
     });
   });
 
+  it('extracts turns from artifact when present', async () => {
+    const json =
+      '{"input_tokens":1000,"output_tokens":200,"cache_read_tokens":500,"cache_write_tokens":100,"turns":42}';
+    const zip = makeTokenZip(json);
+
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.artifactTurns).toBe(42);
+  });
+
+  it('sets artifactTurns to null when turns absent from artifact', async () => {
+    const json =
+      '{"input_tokens":1000,"output_tokens":200,"cache_read_tokens":500,"cache_write_tokens":100}';
+    const zip = makeTokenZip(json);
+
+    const octokit = makeOctokit({
+      artifacts: [{ name: 'agent-tokens', id: 999 }],
+      artifactZip: zip,
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.artifactTurns).toBeNull();
+  });
+
   it('defaults output_tokens to 0 when missing from artifact', async () => {
     const zip = makeTokenZip(
       '{"input_tokens":1000,"cache_read_tokens":500,"cache_write_tokens":100}'

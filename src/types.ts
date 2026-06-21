@@ -154,6 +154,8 @@ export interface AgentTokensArtifact {
   cache_read_tokens: number;
   /** Cache write tokens */
   cache_write_tokens: number;
+  /** Number of agent turns/iterations (optional — populated by agent workflows that track it) */
+  turns?: number;
 }
 
 /**
