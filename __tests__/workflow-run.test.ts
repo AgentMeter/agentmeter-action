@@ -379,7 +379,7 @@ describe('resolveWorkflowRun', () => {
     expect(result.tokens?.cacheWriteTokens).toBe(0);
   });
 
-  it('skips when listJobsForWorkflowRun fails (fail closed to prevent double-ingest)', async () => {
+  it('retries once then skips when listJobsForWorkflowRun fails twice (fail closed)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -389,9 +389,26 @@ describe('resolveWorkflowRun', () => {
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(result.shouldProceed).toBe(false);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')
     );
+  });
+
+  it('proceeds when listJobsForWorkflowRun succeeds on retry after transient failure', async () => {
+    const octokit = makeOctokit({ conclusionJobStatus: 'completed' });
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('500 server error'))
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'completed', conclusion: 'success' }] },
+      } as never);
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.shouldProceed).toBe(true);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
   });
 
   it('warns and returns partial data when workflow run API fails', async () => {

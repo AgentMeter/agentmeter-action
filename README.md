@@ -290,8 +290,12 @@ If you're not using gh-aw, add these two steps to your agent job to write and up
 - name: Write token counts
   if: always()
   run: |
-    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s,"turns":%s}\n' \
-      "$INPUT_TOKENS" "$OUTPUT_TOKENS" "$CACHE_READ_TOKENS" "$CACHE_WRITE_TOKENS" "$TURNS" \
+    turns_field=""
+    if [ -n "$TURNS" ]; then
+      turns_field=",\"turns\":$TURNS"
+    fi
+    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s%s}\n' \
+      "$INPUT_TOKENS" "$OUTPUT_TOKENS" "$CACHE_READ_TOKENS" "$CACHE_WRITE_TOKENS" "$turns_field" \
       > /tmp/agent-tokens.json
 
 - uses: actions/upload-artifact@v4

@@ -314,7 +314,12 @@ async function findExistingComment({
     const existing = comments.find((c) => c.body?.includes(COMMENT_MARKER));
     if (!existing) return null;
     return { id: existing.id, body: existing.body ?? '' };
-  } catch {
+  } catch (error) {
+    // Log and return null so upsertComment falls through to createComment.
+    // A possible duplicate is preferable to silently dropping the comment entirely.
+    core.warning(
+      `AgentMeter: could not list comments to find existing — will create new: ${error}`
+    );
     return null;
   }
 }

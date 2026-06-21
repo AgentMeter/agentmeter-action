@@ -99,8 +99,9 @@ export async function run(): Promise<void> {
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
       resolvedTriggerType = runData.triggerType;
-      // Always use the agent workflow's name from the run data — ctx.workflowName is the
-      // companion workflow and would misattribute if used as a fallback here.
+      // Always use the agent workflow's name from run data, even if empty. A blank name is
+      // preferable to silently inheriting ctx.workflowName (the companion workflow), which would
+      // misattribute ingests in the dashboard.
       resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
       artifactTurns = runData.artifactTurns;
@@ -138,11 +139,17 @@ export async function run(): Promise<void> {
   // Fall back to resolvedTriggerRef from resolveTrigger (companion workflow_run mode — it knows
   // whether a PR was found regardless of the triggering event name, e.g. issue_comment on a PR).
   // Last resort: buildTriggerRef from the event name and number.
+  // Prefer resolvedTriggerType (set by resolveTrigger in workflow_run mode — already knows
+  // PR vs issue) over resolvedTriggerEvent when building the ref label, so a manual
+  // trigger_number without trigger_event doesn't default to the generic '#N' form for PRs.
   const triggerRef =
     ctx.triggerRef ??
     resolvedTriggerRef ??
     (resolvedTriggerNumber !== null
-      ? buildTriggerRef({ eventName: resolvedTriggerEvent, number: resolvedTriggerNumber })
+      ? buildTriggerRef({
+          eventName: resolvedTriggerType ?? resolvedTriggerEvent,
+          number: resolvedTriggerNumber,
+        })
       : null);
 
   // resolvedTriggerType is only set in companion workflow_run mode (from resolveTrigger).
