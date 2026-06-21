@@ -6,11 +6,6 @@ engine: claude
 
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to check out (defaults to current)"
-        required: false
-        default: ""
 
 timeout-minutes: 10
 
