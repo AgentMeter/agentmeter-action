@@ -143,6 +143,46 @@ describe('resolveWorkflowRun', () => {
     expect(result.triggerEvent).toBe('pull_request');
   });
 
+  it('validates pull_requests[0] by head SHA when headSha is available', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        head_sha: 'correct-sha',
+        event: 'pull_request',
+        pull_requests: [
+          { number: 99, head: { sha: 'correct-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+          { number: 88, head: { sha: 'other-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+        ],
+      },
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    expect(result.triggerNumber).toBe(99);
+  });
+
+  it('falls through to branch lookup when pull_requests entries do not match headSha', async () => {
+    const octokit = makeOctokit({
+      runData: {
+        head_branch: 'feat/pr-branch',
+        head_sha: 'correct-sha',
+        event: 'pull_request',
+        pull_requests: [
+          { number: 77, head: { sha: 'stale-sha', ref: '', repo: { id: 0, url: '', name: '' } } },
+        ],
+      },
+    });
+    octokit.rest.pulls.list = vi.fn().mockResolvedValue({
+      data: [{ number: 55, head: { sha: 'correct-sha' } }],
+    });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const result = await resolveWorkflowRun(baseArgs);
+
+    // SHA mismatch in pull_requests → branch lookup finds the correct PR
+    expect(result.triggerNumber).toBe(55);
+  });
+
   it('resolves trigger number via PR list API when pull_requests array is empty', async () => {
     const octokit = makeOctokit({
       runData: {
@@ -379,7 +419,7 @@ describe('resolveWorkflowRun', () => {
     expect(result.tokens?.cacheWriteTokens).toBe(0);
   });
 
-  it('retries once then skips when listJobsForWorkflowRun fails twice (fail closed)', async () => {
+  it('proceeds and warns when listJobsForWorkflowRun fails twice (fail open)', async () => {
     const octokit = makeOctokit({});
     octokit.rest.actions.listJobsForWorkflowRun = vi
       .fn()
@@ -388,7 +428,7 @@ describe('resolveWorkflowRun', () => {
 
     const result = await resolveWorkflowRun(baseArgs);
 
-    expect(result.shouldProceed).toBe(false);
+    expect(result.shouldProceed).toBe(true);
     expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
       expect.stringContaining('could not check conclusion job status')

@@ -210,12 +210,14 @@ async function checkConclusionJobCompleted({
     try {
       return await attemptCheck();
     } catch (secondError) {
-      // Both attempts failed — fail closed to prevent duplicate ingest on persistent API errors
-      // (e.g. under-scoped token). The retry above already handled transient one-shot failures.
+      // Both attempts failed — fail open so a transient API outage or under-scoped token does
+      // not silently suppress the entire ingest. The server deduplicates by githubRunId, so
+      // a duplicate submission (if gh-aw fires multiple times) is handled there rather than
+      // losing the run data entirely.
       core.warning(
-        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Skipping.`
+        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Proceeding without gate — server will deduplicate by run ID.`
       );
-      return false;
+      return true;
     }
   }
 }
@@ -244,7 +246,7 @@ async function fetchRun({
   head_sha?: string | null;
   event?: string | null;
   name?: string | null;
-  pull_requests?: Array<{ number: number }>;
+  pull_requests?: Array<{ headSha: string; number: number }>;
 } | null> {
   try {
     const { data } = await octokit.rest.actions.getWorkflowRun({
@@ -259,7 +261,10 @@ async function fetchRun({
       head_sha: data.head_sha,
       event: data.event,
       name: data.name,
-      pull_requests: (data.pull_requests ?? []).map((pr) => ({ number: pr.number })),
+      pull_requests: (data.pull_requests ?? []).map((pr) => ({
+        headSha: pr.head.sha,
+        number: pr.number,
+      })),
     };
   } catch (error) {
     core.warning(`AgentMeter: failed to fetch workflow run ${workflowRunId}: ${error}`);
@@ -293,7 +298,7 @@ async function resolveTrigger({
   /** Repository owner */
   owner: string;
   /** Pull requests associated with the triggering run */
-  pullRequests: Array<{ number: number }>;
+  pullRequests: Array<{ headSha: string; number: number }>;
   /** Repository name */
   repo: string;
 }): Promise<{
@@ -302,14 +307,19 @@ async function resolveTrigger({
   triggerType: string;
   triggerRef: string | null;
 }> {
-  if (pullRequests.length > 0 && pullRequests[0]) {
-    const num = pullRequests[0].number;
-    return {
-      triggerNumber: num,
-      triggerEvent: event,
-      triggerType: normalizeTriggerType({ event, isPR: true }),
-      triggerRef: `PR #${num}`,
-    };
+  if (pullRequests.length > 0) {
+    // Validate by head SHA when available — same logic as the branch-lookup fallback below.
+    // Without this, a stale first entry or reused branch could attribute the run to the wrong PR.
+    const match = headSha ? pullRequests.find((pr) => pr.headSha === headSha) : pullRequests[0];
+    if (match) {
+      return {
+        triggerNumber: match.number,
+        triggerEvent: event,
+        triggerType: normalizeTriggerType({ event, isPR: true }),
+        triggerRef: `PR #${match.number}`,
+      };
+    }
+    // headSha provided but no entry matched — fall through to branch-based lookup
   }
 
   // GitHub frequently leaves pull_requests[] empty for workflow_run events even when the
