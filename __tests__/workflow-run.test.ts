@@ -435,7 +435,7 @@ describe('resolveWorkflowRun', () => {
     const result = await resolveWorkflowRun(baseArgs);
 
     expect(vi.mocked(core.warning)).toHaveBeenCalledWith(
-      expect.stringContaining('failed to fetch agent-tokens artifact')
+      expect.stringContaining('failed to parse agent-tokens artifact')
     );
     expect(result.tokens).toBeUndefined();
   });

@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { unzipSync } from 'fflate';
+import { extractFromStreamJson } from './token-extractor';
 import type { AgentTokensArtifact, TokenCountsWithMeta } from './types';
 
 /**
@@ -389,7 +390,9 @@ function normalizeTriggerType({
 
 /**
  * Downloads and parses the agent-tokens artifact from the triggering workflow run.
- * Returns undefined if the artifact doesn't exist or can't be parsed.
+ * Falls back to parsing agent-stdio.log from the agent artifact when agent-tokens
+ * is absent (e.g. gh-aw claude workflows that don't emit agent-tokens natively).
+ * Returns undefined tokens and null turns if neither source yields data.
  */
 async function fetchAgentTokens({
   octokit,
@@ -407,20 +410,58 @@ async function fetchAgentTokens({
   workflowRunId: number;
 }): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
   try {
-    // List artifacts for the run and find agent-tokens
     const { data: artifactList } = await octokit.rest.actions.listWorkflowRunArtifacts({
       owner,
       repo,
       run_id: workflowRunId,
     });
 
-    const artifact = artifactList.artifacts.find((a) => a.name === 'agent-tokens');
-    if (!artifact) {
-      core.info('AgentMeter: no agent-tokens artifact found — token data will be omitted.');
-      return { tokens: undefined, artifactTurns: null };
+    // Fast path: dedicated agent-tokens artifact (emitted by Codex and turns-test workflows)
+    const agentTokensArtifact = artifactList.artifacts.find((a) => a.name === 'agent-tokens');
+    if (agentTokensArtifact) {
+      const result = await parseAgentTokensArtifact({
+        octokit,
+        owner,
+        repo,
+        artifact: agentTokensArtifact,
+      });
+      if (result.tokens !== undefined) return result;
     }
 
-    // Download the artifact as a zip (GitHub returns a redirect URL)
+    // Fallback: parse agent-stdio.log from the agent artifact (gh-aw claude workflows).
+    // The log contains stream-json NDJSON where the final {"type":"result"} line has usage + num_turns.
+    const agentArtifact = artifactList.artifacts.find((a) => a.name === 'agent');
+    if (agentArtifact) {
+      core.info(
+        'AgentMeter: no agent-tokens artifact — falling back to agent-stdio.log from agent artifact.'
+      );
+      const result = await parseAgentStdioLog({ octokit, owner, repo, artifact: agentArtifact });
+      if (result.tokens !== undefined) return result;
+    }
+
+    core.info('AgentMeter: no token data found in any artifact — cost and turns will be omitted.');
+    return { tokens: undefined, artifactTurns: null };
+  } catch (error) {
+    core.warning(`AgentMeter: failed to fetch agent tokens: ${error}`);
+    return { tokens: undefined, artifactTurns: null };
+  }
+}
+
+/**
+ * Downloads and parses the dedicated agent-tokens artifact.
+ */
+async function parseAgentTokensArtifact({
+  octokit,
+  owner,
+  repo,
+  artifact,
+}: {
+  octokit: ReturnType<typeof github.getOctokit>;
+  owner: string;
+  repo: string;
+  artifact: { id: number };
+}): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
+  try {
     const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
       owner,
       repo,
@@ -428,7 +469,6 @@ async function fetchAgentTokens({
       archive_format: 'zip',
     });
 
-    // downloadData is the zip bytes as an ArrayBuffer
     const parsed = await parseAgentTokensZip(downloadData as ArrayBuffer);
     if (!parsed) return { tokens: undefined, artifactTurns: null };
 
@@ -443,7 +483,57 @@ async function fetchAgentTokens({
       artifactTurns: typeof parsed.turns === 'number' ? parsed.turns : null,
     };
   } catch (error) {
-    core.warning(`AgentMeter: failed to fetch agent-tokens artifact: ${error}`);
+    core.warning(`AgentMeter: failed to parse agent-tokens artifact: ${error}`);
+    return { tokens: undefined, artifactTurns: null };
+  }
+}
+
+/**
+ * Downloads the agent artifact, extracts agent-stdio.log, and parses stream-json
+ * output to recover token usage and turn count for gh-aw claude workflows.
+ */
+async function parseAgentStdioLog({
+  octokit,
+  owner,
+  repo,
+  artifact,
+}: {
+  octokit: ReturnType<typeof github.getOctokit>;
+  owner: string;
+  repo: string;
+  artifact: { id: number };
+}): Promise<{ tokens: TokenCountsWithMeta | undefined; artifactTurns: number | null }> {
+  try {
+    const { data: downloadData } = await octokit.rest.actions.downloadArtifact({
+      owner,
+      repo,
+      artifact_id: artifact.id,
+      archive_format: 'zip',
+    });
+
+    const unzipped = unzipSync(new Uint8Array(downloadData as ArrayBuffer));
+    const logFile = unzipped['agent-stdio.log'];
+    if (!logFile) {
+      core.info('AgentMeter: agent-stdio.log not found in agent artifact.');
+      return { tokens: undefined, artifactTurns: null };
+    }
+
+    const logContent = new TextDecoder().decode(logFile);
+    const extracted = extractFromStreamJson(logContent);
+    if (!extracted) {
+      core.info('AgentMeter: no stream-json result line found in agent-stdio.log.');
+      return { tokens: undefined, artifactTurns: null };
+    }
+
+    core.info(
+      `AgentMeter: extracted tokens from agent-stdio.log (turns: ${extracted.turns ?? 'unknown'}).`
+    );
+    return {
+      tokens: { ...extracted.tokens, isApproximate: false },
+      artifactTurns: extracted.turns,
+    };
+  } catch (error) {
+    core.warning(`AgentMeter: failed to parse agent-stdio.log: ${error}`);
     return { tokens: undefined, artifactTurns: null };
   }
 }

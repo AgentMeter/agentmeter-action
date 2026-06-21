@@ -7,6 +7,60 @@ import type {
 } from './types';
 
 /**
+ * Extracts token counts and turn count from Claude `--output-format stream-json` output.
+ * In stream-json mode Claude emits one JSON object per line (NDJSON); the final
+ * `{"type":"result",...}` line contains cumulative `usage` and `num_turns`.
+ * Returns null if no result line is found.
+ */
+export function extractFromStreamJson(agentOutput: string): {
+  tokens: TokenCounts;
+  turns: number | null;
+  isApproximate: boolean;
+} | null {
+  if (!agentOutput) return null;
+
+  let resultObj: Record<string, unknown> | null = null;
+
+  for (const line of agentOutput.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.includes('"type":"result"') && !trimmed.includes('"type": "result"')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        (parsed as Record<string, unknown>)['type'] === 'result'
+      ) {
+        resultObj = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // not valid JSON, skip
+    }
+  }
+
+  if (!resultObj) return null;
+
+  const usage = resultObj['usage'];
+  if (typeof usage !== 'object' || usage === null) return null;
+  const u = usage as Record<string, unknown>;
+
+  const turns = typeof resultObj['num_turns'] === 'number' ? resultObj['num_turns'] : null;
+
+  return {
+    tokens: {
+      inputTokens: typeof u['input_tokens'] === 'number' ? u['input_tokens'] : 0,
+      outputTokens: typeof u['output_tokens'] === 'number' ? u['output_tokens'] : 0,
+      cacheReadTokens:
+        typeof u['cache_read_input_tokens'] === 'number' ? u['cache_read_input_tokens'] : 0,
+      cacheWriteTokens:
+        typeof u['cache_creation_input_tokens'] === 'number' ? u['cache_creation_input_tokens'] : 0,
+    },
+    turns,
+    isApproximate: false,
+  };
+}
+
+/**
  * Attempts to extract token counts from agent stdout.
  * Tries Claude JSON, Codex JSONL, then falls back to regex extraction.
  * Returns null if no token data can be found.
