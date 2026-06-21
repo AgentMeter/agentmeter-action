@@ -302,17 +302,26 @@ async function findExistingComment({
   repo: string;
   issueOrPrNumber: number;
 }): Promise<{ id: number; body: string } | null> {
-  const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
-  const comments = await gh.paginate(gh.rest.issues.listComments, {
-    owner,
-    repo,
-    issue_number: issueOrPrNumber,
-    per_page: 100,
-  });
+  try {
+    const gh = octokit as ReturnType<typeof import('@actions/github').getOctokit>;
+    const comments = await gh.paginate(gh.rest.issues.listComments, {
+      owner,
+      repo,
+      issue_number: issueOrPrNumber,
+      per_page: 100,
+    });
 
-  const existing = comments.find((c) => c.body?.includes(COMMENT_MARKER));
-  if (!existing) return null;
-  return { id: existing.id, body: existing.body ?? '' };
+    const existing = comments.find((c) => c.body?.includes(COMMENT_MARKER));
+    if (!existing) return null;
+    return { id: existing.id, body: existing.body ?? '' };
+  } catch (error) {
+    // Log and return null so upsertComment falls through to createComment.
+    // A possible duplicate is preferable to silently dropping the comment entirely.
+    core.warning(
+      `AgentMeter: could not list comments to find existing — will create new: ${error}`
+    );
+    return null;
+  }
 }
 
 /**
