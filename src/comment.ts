@@ -276,9 +276,9 @@ function parseTableRows(rawRows: string): ParsedRun[] {
  */
 function parseExistingRuns(body: string): ParsedRun[] {
   try {
-    // When >5 runs exist the full history lives in the collapsible — prefer that
+    // Support both "All N runs" (uncapped) and "Last N runs" (capped) summary labels
     const detailsMatch = body.match(
-      /<summary>All \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
+      /<summary>(?:All|Last) \d+ runs<\/summary>\n\n([\s\S]+?)\n\n<\/details>/
     );
     if (detailsMatch?.[1]) {
       const tableMatch = detailsMatch[1].match(/\| #.*?\n\|[-|: ]+\n((?:\|.*?\n)*)/s);

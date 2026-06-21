@@ -130,13 +130,21 @@ export async function run(): Promise<void> {
     inputs.outputTokens !== null ||
     inputs.cacheReadTokens !== null ||
     inputs.cacheWriteTokens !== null;
+  // isApproximate is only cleared when the caller explicitly provides all four token fields.
+  // A partial override still leaves some values from extracted/artifact sources, which may
+  // be approximate, so the flag from baseTokens is preserved in that case.
+  const hasAllExplicit =
+    inputs.inputTokens !== null &&
+    inputs.outputTokens !== null &&
+    inputs.cacheReadTokens !== null &&
+    inputs.cacheWriteTokens !== null;
   const tokens =
     hasAnyExplicit || baseTokens !== undefined
       ? {
           cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
           cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
           inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
-          isApproximate: hasAnyExplicit ? false : (baseTokens?.isApproximate ?? false),
+          isApproximate: hasAllExplicit ? false : (baseTokens?.isApproximate ?? false),
           outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
         }
       : undefined;
