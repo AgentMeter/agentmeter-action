@@ -180,7 +180,7 @@ async function checkConclusionJobCompleted({
   /** Workflow run ID */
   workflowRunId: number;
 }): Promise<boolean> {
-  try {
+  const attemptCheck = async (): Promise<boolean> => {
     const { data } = await octokit.rest.actions.listJobsForWorkflowRun({
       owner,
       repo,
@@ -198,12 +198,24 @@ async function checkConclusionJobCompleted({
     }
     core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
     return true;
-  } catch (error) {
-    // Fail closed on API errors — proceeding on a failed gate check risks double-ingest.
-    // A missing conclusion job (non-gh-aw workflow) is handled above as a successful
-    // API call that returns no matching job, not as an exception.
-    core.warning(`AgentMeter: could not check conclusion job status: ${error}. Skipping.`);
-    return false;
+  };
+
+  try {
+    return await attemptCheck();
+  } catch (firstError) {
+    core.warning(
+      `AgentMeter: could not check conclusion job status (attempt 1): ${firstError}. Retrying…`
+    );
+    try {
+      return await attemptCheck();
+    } catch (secondError) {
+      // Both attempts failed — proceed rather than silently dropping the ingest. A transient
+      // API hiccup or token-scope issue should not cause permanent data loss.
+      core.warning(
+        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Proceeding.`
+      );
+      return true;
+    }
   }
 }
 
@@ -334,9 +346,9 @@ async function resolveTrigger({
     }
   }
 
-  // gh-aw issue branches are named agent/issue-N — require the full prefix to
-  // avoid mismatching unrelated branches like feature/fix-issue-12-auth.
-  const issueMatch = headBranch.match(/\bagent\/issue-(\d+)\b/);
+  // gh-aw issue branches are named agent/issue-N — anchor to the full branch name to
+  // avoid substring matches in longer branch names like feature/agent/issue-12-fix.
+  const issueMatch = headBranch.match(/^agent\/issue-(\d+)$/);
   if (issueMatch?.[1]) {
     const num = parseInt(issueMatch[1], 10);
     return {
