@@ -51,9 +51,11 @@ Go to [agentmeter.app](https://agentmeter.app) and sign in with GitHub. AgentMet
 
 After signing in, go to **Settings → API Key** to generate your `am_sk_…` key.
 
-### 3. Add it as a repository secret
+### 3. Add it as a secret
 
-In your repo: **Settings → Secrets and variables → Actions → New repository secret**
+**Repository secret** (single repo): Settings → Secrets and variables → Actions → New repository secret
+
+**Organization secret** (recommended for multiple repos): your org → Settings → Secrets and variables → Actions → New organization secret, then grant access to the repos that run agents.
 
 Name: `AGENTMETER_API_KEY`
 Value: your `am_sk_…` key
