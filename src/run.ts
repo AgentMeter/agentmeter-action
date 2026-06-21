@@ -136,7 +136,7 @@ export async function run(): Promise<void> {
           cacheReadTokens: inputs.cacheReadTokens ?? baseTokens?.cacheReadTokens ?? 0,
           cacheWriteTokens: inputs.cacheWriteTokens ?? baseTokens?.cacheWriteTokens ?? 0,
           inputTokens: inputs.inputTokens ?? baseTokens?.inputTokens ?? 0,
-          isApproximate: baseTokens?.isApproximate ?? false,
+          isApproximate: hasAnyExplicit ? false : (baseTokens?.isApproximate ?? false),
           outputTokens: inputs.outputTokens ?? baseTokens?.outputTokens ?? 0,
         }
       : undefined;

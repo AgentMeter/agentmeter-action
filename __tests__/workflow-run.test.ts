@@ -82,15 +82,42 @@ describe('resolveWorkflowRun', () => {
     expect(result.completedAt).toBe('2026-03-09T10:05:00Z');
   });
 
-  it('skips when conclusion job is not yet completed', async () => {
+  it('skips when conclusion job is not yet completed after re-check', async () => {
+    vi.useFakeTimers();
     const octokit = makeOctokit({
       jobs: [{ name: 'conclusion', status: 'in_progress' }],
     });
     mockGetOctokit.mockReturnValue(octokit as never);
 
-    const result = await resolveWorkflowRun(baseArgs);
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
 
     expect(result.shouldProceed).toBe(false);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('proceeds when conclusion job completes on re-check after jobs-API lag', async () => {
+    vi.useFakeTimers();
+    const octokit = makeOctokit({});
+    octokit.rest.actions.listJobsForWorkflowRun = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'in_progress' }] },
+      })
+      .mockResolvedValueOnce({
+        data: { jobs: [{ name: 'conclusion', status: 'completed', conclusion: 'success' }] },
+      });
+    mockGetOctokit.mockReturnValue(octokit as never);
+
+    const resultPromise = resolveWorkflowRun(baseArgs);
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+    vi.useRealTimers();
+
+    expect(result.shouldProceed).toBe(true);
+    expect(octokit.rest.actions.listJobsForWorkflowRun).toHaveBeenCalledTimes(2);
   });
 
   it('proceeds when no conclusion job exists (non-gh-aw workflow)', async () => {

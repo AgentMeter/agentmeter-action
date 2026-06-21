@@ -165,6 +165,8 @@ function emptyResult({
  * Checks whether the terminal "conclusion" job in a gh-aw workflow run has
  * completed. workflow_run fires for each job completion (~5 times per run),
  * so we use this to ensure we only ingest once per agent run.
+ * Re-checks once after a brief delay when the job reads in_progress, to handle
+ * the case where the jobs API briefly lags behind the workflow_run event.
  */
 async function checkConclusionJobCompleted({
   octokit,
@@ -181,44 +183,65 @@ async function checkConclusionJobCompleted({
   /** Workflow run ID */
   workflowRunId: number;
 }): Promise<boolean> {
-  const attemptCheck = async (): Promise<boolean> => {
+  const queryConclusion = async (): Promise<'not_found' | 'in_progress' | 'completed'> => {
     const { data } = await octokit.rest.actions.listJobsForWorkflowRun({
       owner,
       repo,
       run_id: workflowRunId,
     });
     const conclusionJob = data.jobs.find((j) => j.name === 'conclusion');
-    if (!conclusionJob) {
-      // No conclusion job means this is not a gh-aw workflow — proceed without gating.
-      core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
-      return true;
-    }
-    if (conclusionJob.status !== 'completed') {
-      core.info('AgentMeter: conclusion job not yet completed — skipping this firing.');
-      return false;
-    }
-    core.info(`AgentMeter: conclusion job completed (${conclusionJob.conclusion}) — proceeding.`);
-    return true;
+    if (!conclusionJob) return 'not_found';
+    return conclusionJob.status === 'completed' ? 'completed' : 'in_progress';
   };
 
+  let status: 'not_found' | 'in_progress' | 'completed';
   try {
-    return await attemptCheck();
+    status = await queryConclusion();
   } catch (firstError) {
     core.warning(
       `AgentMeter: could not check conclusion job status (attempt 1): ${firstError}. Retrying…`
     );
     try {
-      return await attemptCheck();
+      status = await queryConclusion();
     } catch (secondError) {
-      // Both attempts failed — fail closed to prevent duplicate ingest. Without a confirmed
-      // backend upsert-by-githubRunId guarantee, failing open risks creating partial duplicate
-      // records each time gh-aw fires workflow_run (~5 times per run). The warning is surfaced
-      // as a notice so it appears in the job summary and is not silently swallowed.
       core.notice(
         `AgentMeter: could not check conclusion job status after 2 attempts (${secondError}). Skipping ingest for this firing. If runs are systematically missing, check that GITHUB_TOKEN has actions:read scope.`
       );
       return false;
     }
+  }
+
+  if (status === 'not_found') {
+    // No conclusion job means this is not a gh-aw workflow — proceed without gating.
+    core.info('AgentMeter: no conclusion job found — not a gh-aw workflow, proceeding.');
+    return true;
+  }
+
+  if (status === 'completed') {
+    core.info('AgentMeter: conclusion job completed — proceeding.');
+    return true;
+  }
+
+  // status === 'in_progress' — re-check once after a brief delay.
+  // The workflow_run event can arrive before the jobs API reflects the terminal job state,
+  // so a single stale read should not permanently drop the ingest.
+  core.info('AgentMeter: conclusion job in_progress — re-checking in 3s for jobs-API lag.');
+  await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
+  try {
+    const recheck = await queryConclusion();
+    if (recheck === 'completed' || recheck === 'not_found') {
+      core.info('AgentMeter: conclusion job completed after re-check — proceeding.');
+      return true;
+    }
+    core.info(
+      'AgentMeter: conclusion job still not completed after re-check — skipping this firing.'
+    );
+    return false;
+  } catch (recheckError) {
+    core.warning(
+      `AgentMeter: could not re-check conclusion job status: ${recheckError}. Skipping.`
+    );
+    return false;
   }
 }
 

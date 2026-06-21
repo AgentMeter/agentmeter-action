@@ -55,6 +55,8 @@ const TABLE_HEADER = [
 ];
 
 const VISIBLE_RUNS_LIMIT = 5;
+/** Hard cap on stored run rows to stay well under GitHub's 65 536-byte comment limit. */
+const MAX_STORED_RUNS = 20;
 
 /** Minimal run fields needed to render a table row */
 type RunRow = Pick<
@@ -97,8 +99,10 @@ export function buildCommentBody({
   runData: RunCommentData;
 }): string {
   const existingRuns = existingBody ? parseExistingRuns(existingBody) : [];
-  // Newest first: current run at the top
-  const allRuns: RunRow[] = [runData, ...existingRuns];
+  // Newest first: current run at the top; prune oldest entries beyond the cap to avoid
+  // eventually exceeding GitHub's comment size limit on long-lived PRs.
+  const allRuns: RunRow[] = [runData, ...existingRuns].slice(0, MAX_STORED_RUNS);
+  const isCapped = existingRuns.length + 1 > MAX_STORED_RUNS;
 
   const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
   const totalRow =
@@ -120,9 +124,10 @@ export function buildCommentBody({
   ];
 
   if (hasMore) {
+    const summaryLabel = isCapped ? `Last ${MAX_STORED_RUNS} runs` : `All ${allRuns.length} runs`;
     lines.push(
       '<details>',
-      `<summary>All ${allRuns.length} runs</summary>`,
+      `<summary>${summaryLabel}</summary>`,
       '',
       ...TABLE_HEADER,
       ...buildTableRows({ runs: allRuns, startIndex: 1 }),
