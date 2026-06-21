@@ -49,7 +49,7 @@ Go to [agentmeter.app](https://agentmeter.app) and sign in with GitHub. AgentMet
 
 ### 2. Get your API key
 
-After signing in, go to **Settings → API Key** to generate your `am_sk_…` key.
+After signing in, go to **Settings → API Keys** and create an **org key** (not a personal key). Org keys attribute runs to your organization and are required for GitHub Actions — personal keys are for the local CLI only.
 
 ### 3. Add it as a secret
 
@@ -309,7 +309,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `api_key` | yes | — | Your AgentMeter API key (`am_sk_…`). Get it from [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings). |
+| `api_key` | yes | — | Your AgentMeter **org** API key (`am_sk_…`). Create one at [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings) under API Keys → Create org key. |
 | `model` | no | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
 | `engine` | no | `claude` | The AI engine (`claude`, `codex`). |
 | `status` | no | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
