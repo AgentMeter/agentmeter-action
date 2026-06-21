@@ -209,12 +209,12 @@ async function checkConclusionJobCompleted({
     try {
       return await attemptCheck();
     } catch (secondError) {
-      // Both attempts failed — proceed rather than silently dropping the ingest. A transient
-      // API hiccup or token-scope issue should not cause permanent data loss.
+      // Both attempts failed — fail closed to prevent duplicate ingest on persistent API errors
+      // (e.g. under-scoped token). The retry above already handled transient one-shot failures.
       core.warning(
-        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Proceeding.`
+        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Skipping.`
       );
-      return true;
+      return false;
     }
   }
 }

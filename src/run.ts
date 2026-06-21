@@ -99,10 +99,10 @@ export async function run(): Promise<void> {
       if (!inputs.triggerEvent) resolvedTriggerEvent = runData.triggerEvent;
       resolvedTriggerRef = runData.triggerRef;
       resolvedTriggerType = runData.triggerType;
-      // Prefer the agent workflow's name from the run data over ctx.workflowName (which is the
-      // companion workflow). Only overwrite when non-empty so a failed getWorkflowRun() doesn't
-      // blank out the name entirely.
-      if (runData.workflowName) resolvedWorkflowName = runData.workflowName;
+      // Always use the agent workflow's name from run data, even if empty. A blank name is
+      // preferable to silently inheriting ctx.workflowName (the companion workflow), which would
+      // misattribute ingests in the dashboard.
+      resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
       artifactTurns = runData.artifactTurns;
     }
