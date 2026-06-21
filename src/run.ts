@@ -193,8 +193,8 @@ export async function run(): Promise<void> {
       prNumber: inputs.prNumber,
       durationSeconds,
       turns: resolvedTurns,
-      startedAt: resolvedStartedAt,
-      completedAt: resolvedCompletedAt,
+      ...(resolvedStartedAt ? { startedAt: resolvedStartedAt } : {}),
+      ...(resolvedCompletedAt ? { completedAt: resolvedCompletedAt } : {}),
       tokens,
     },
   });

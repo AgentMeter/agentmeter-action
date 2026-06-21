@@ -210,14 +210,14 @@ async function checkConclusionJobCompleted({
     try {
       return await attemptCheck();
     } catch (secondError) {
-      // Both attempts failed — fail open so a transient API outage or under-scoped token does
-      // not silently suppress the entire ingest. The server deduplicates by githubRunId, so
-      // a duplicate submission (if gh-aw fires multiple times) is handled there rather than
-      // losing the run data entirely.
-      core.warning(
-        `AgentMeter: could not check conclusion job status (attempt 2): ${secondError}. Proceeding without gate — server will deduplicate by run ID.`
+      // Both attempts failed — fail closed to prevent duplicate ingest. Without a confirmed
+      // backend upsert-by-githubRunId guarantee, failing open risks creating partial duplicate
+      // records each time gh-aw fires workflow_run (~5 times per run). The warning is surfaced
+      // as a notice so it appears in the job summary and is not silently swallowed.
+      core.notice(
+        `AgentMeter: could not check conclusion job status after 2 attempts (${secondError}). Skipping ingest for this firing. If runs are systematically missing, check that GITHUB_TOKEN has actions:read scope.`
       );
-      return true;
+      return false;
     }
   }
 }
