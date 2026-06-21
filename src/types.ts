@@ -106,10 +106,10 @@ export interface IngestPayload {
   durationSeconds: number | null;
   /** Number of agent turns */
   turns: number | null;
-  /** ISO 8601 start time */
-  startedAt: string;
-  /** ISO 8601 end time */
-  completedAt: string;
+  /** ISO 8601 start time, or null when unavailable */
+  startedAt: string | null;
+  /** ISO 8601 end time, or null when unavailable */
+  completedAt: string | null;
   /** Token usage data */
   tokens?: TokenCountsWithMeta;
 }

@@ -54,8 +54,8 @@ export async function run(): Promise<void> {
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedTriggerRef: string | null = null;
   let resolvedTriggerType: string | null = null;
-  let resolvedStartedAt = inputs.startedAt || selfStartedAt;
-  let resolvedCompletedAt = inputs.completedAt || new Date().toISOString();
+  let resolvedStartedAt: string | null = inputs.startedAt || selfStartedAt;
+  let resolvedCompletedAt: string | null = inputs.completedAt || new Date().toISOString();
   let resolvedWorkflowName = ctx.workflowName;
 
   if (inputs.workflowRunId !== null) {
@@ -67,10 +67,16 @@ export async function run(): Promise<void> {
       );
       return;
     } else {
+      // In workflow_run mode, read conclusion directly from the event payload so the
+      // companion workflow does not need to manually wire status=. The action.yml default
+      // is 'success', which would silently misattribute failed runs if the input is omitted.
+      const payloadConclusion: unknown = github.context.payload['workflow_run']?.conclusion;
+      const rawConclusion =
+        typeof payloadConclusion === 'string' ? payloadConclusion : inputs.status;
       const runData = await resolveWorkflowRun({
         githubToken,
         owner: ctx.owner,
-        rawConclusion: inputs.status,
+        rawConclusion,
         repo: ctx.repo,
         workflowRunId: inputs.workflowRunId,
       });
@@ -85,10 +91,10 @@ export async function run(): Promise<void> {
 
       // Only override with resolved values when explicit inputs aren't set.
       // In workflow_run mode never fall back to selfStartedAt/now — those are the companion
-      // workflow's times, not the agent run's times. Use empty string so durationSeconds
-      // safely resolves to 0 rather than silently recording the wrong run's duration.
-      resolvedStartedAt = inputs.startedAt || runData.startedAt || '';
-      resolvedCompletedAt = inputs.completedAt || runData.completedAt || '';
+      // workflow's times, not the agent run's times. Use null so the payload omits invalid
+      // ISO-8601 values and durationSeconds correctly resolves to null.
+      resolvedStartedAt = inputs.startedAt || runData.startedAt || null;
+      resolvedCompletedAt = inputs.completedAt || runData.completedAt || null;
       if (
         (!inputs.startedAt && !runData.startedAt) ||
         (!inputs.completedAt && !runData.completedAt)
@@ -157,8 +163,8 @@ export async function run(): Promise<void> {
   // prefer the resolved type from the triggering run when available.
   const triggerType = resolvedTriggerType || ctx.triggerType || resolvedTriggerEvent || 'other';
 
-  const startMs = new Date(resolvedStartedAt).getTime();
-  const endMs = new Date(resolvedCompletedAt).getTime();
+  const startMs = resolvedStartedAt ? new Date(resolvedStartedAt).getTime() : NaN;
+  const endMs = resolvedCompletedAt ? new Date(resolvedCompletedAt).getTime() : NaN;
   const durationSeconds: number | null =
     Number.isFinite(startMs) && Number.isFinite(endMs)
       ? Math.max(0, Math.round((endMs - startMs) / 1000))
