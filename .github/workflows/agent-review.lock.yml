@@ -856,8 +856,9 @@ jobs:
             OUTPUT=$(echo "$RESULT_LINE" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo "0")
             CACHE_READ=$(echo "$RESULT_LINE" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || echo "0")
             CACHE_WRITE=$(echo "$RESULT_LINE" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo "0")
+            TURNS=$(echo "$RESULT_LINE" | jq -r '.num_turns // empty' 2>/dev/null || true)
           else
-            INPUT=0; OUTPUT=0; CACHE_READ=0; CACHE_WRITE=0
+            INPUT=0; OUTPUT=0; CACHE_READ=0; CACHE_WRITE=0; TURNS=""
           fi
           {
             echo "input_tokens=$INPUT"
@@ -865,8 +866,13 @@ jobs:
             echo "cache_read_tokens=$CACHE_READ"
             echo "cache_write_tokens=$CACHE_WRITE"
           } >> "$GITHUB_OUTPUT"
-          printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
-            "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" > /tmp/gh-aw/agent-tokens.json
+          if [ -n "$TURNS" ]; then
+            printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s,"turns":%s}\n' \
+              "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" "$TURNS" > /tmp/gh-aw/agent-tokens.json
+          else
+            printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
+              "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" > /tmp/gh-aw/agent-tokens.json
+          fi
       - name: Upload token data
         if: always()
         uses: actions/upload-artifact@v4

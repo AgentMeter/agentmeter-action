@@ -256,11 +256,17 @@ The action reads token counts from an `agent-tokens` artifact uploaded by the ag
       OUTPUT=$(echo "$RESULT_LINE" | jq -r '.usage.output_tokens // 0')
       CACHE_READ=$(echo "$RESULT_LINE" | jq -r '.usage.cache_read_input_tokens // 0')
       CACHE_WRITE=$(echo "$RESULT_LINE" | jq -r '.usage.cache_creation_input_tokens // 0')
+      TURNS=$(echo "$RESULT_LINE" | jq -r '.num_turns // empty')
     else
-      INPUT=0; OUTPUT=0; CACHE_READ=0; CACHE_WRITE=0
+      INPUT=0; OUTPUT=0; CACHE_READ=0; CACHE_WRITE=0; TURNS=""
     fi
-    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
-      "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" > /tmp/gh-aw/agent-tokens.json
+    if [ -n "$TURNS" ]; then
+      printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s,"turns":%s}\n' \
+        "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" "$TURNS" > /tmp/gh-aw/agent-tokens.json
+    else
+      printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
+        "$INPUT" "$OUTPUT" "$CACHE_READ" "$CACHE_WRITE" > /tmp/gh-aw/agent-tokens.json
+    fi
 
 - name: Upload token data
   if: always()
@@ -282,8 +288,8 @@ If you're not using gh-aw, add these two steps to your agent job to write and up
 - name: Write token counts
   if: always()
   run: |
-    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s}\n' \
-      "$INPUT_TOKENS" "$OUTPUT_TOKENS" "$CACHE_READ_TOKENS" "$CACHE_WRITE_TOKENS" \
+    printf '{"input_tokens":%s,"output_tokens":%s,"cache_read_tokens":%s,"cache_write_tokens":%s,"turns":%s}\n' \
+      "$INPUT_TOKENS" "$OUTPUT_TOKENS" "$CACHE_READ_TOKENS" "$CACHE_WRITE_TOKENS" "$TURNS" \
       > /tmp/agent-tokens.json
 
 - uses: actions/upload-artifact@v4
@@ -293,7 +299,7 @@ If you're not using gh-aw, add these two steps to your agent job to write and up
     path: /tmp/agent-tokens.json
 ```
 
-Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step outputs, env vars, parsed log lines).
+Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step outputs, env vars, parsed log lines). `turns` is optional — omit it from the JSON if your agent doesn't expose an iteration count.
 
 ---
 

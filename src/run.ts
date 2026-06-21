@@ -49,6 +49,7 @@ export async function run(): Promise<void> {
   // timestamps, trigger number, and agent-tokens artifact. This removes the need
   // for manual pre-steps in the caller's companion workflow.
   let workflowRunTokens: ReturnType<typeof resolveTokens>;
+  let artifactTurns: number | null = null;
   let resolvedTriggerNumber = inputs.triggerNumber ?? ctx.triggerNumber;
   let resolvedTriggerEvent = inputs.triggerEvent || ctx.triggerType;
   let resolvedTriggerRef: string | null = null;
@@ -102,6 +103,7 @@ export async function run(): Promise<void> {
       // companion workflow and would misattribute if used as a fallback here.
       resolvedWorkflowName = runData.workflowName;
       workflowRunTokens = runData.tokens;
+      artifactTurns = runData.artifactTurns;
     }
   }
 
@@ -155,8 +157,11 @@ export async function run(): Promise<void> {
       ? Math.max(0, Math.round((endMs - startMs) / 1000))
       : 0;
 
+  // Priority: explicit input → artifact (workflow_run_id mode) → extracted from agent_output
   const resolvedTurns =
-    inputs.turns ?? (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
+    inputs.turns ??
+    artifactTurns ??
+    (inputs.agentOutput ? extractTurnsFromOutput(inputs.agentOutput) : null);
 
   const result = await submitRun({
     apiKey: inputs.apiKey,
