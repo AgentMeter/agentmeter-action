@@ -8,3 +8,4 @@ node_modules/
 coverage/
 .DS_Store
 # dist/ is intentionally committed — required for GitHub Actions to load the bundle
+.agentmeter.json
