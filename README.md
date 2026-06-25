@@ -13,7 +13,7 @@ Visibility into what your AI agents actually cost. Works with **Claude Code**, *
 Add this action after your AI agent step to:
 
 1. Record token usage, model, duration, and status for each agent run
-2. Submit the data to the [AgentMeter](https://agentmeter.app) dashboard
+2. Submit the data to the [AgentMeter](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action) dashboard
 3. Post or update a cost summary comment on the triggering PR or issue
 
 The action **never fails your workflow** — all API calls and comment posts use `core.warning()` for errors, not `core.setFailed()`.
@@ -45,7 +45,7 @@ The action **never fails your workflow** — all API calls and comment posts use
 
 ### 1. Sign up at agentmeter.app
 
-Go to [agentmeter.app](https://agentmeter.app) and sign in with GitHub. AgentMeter uses GitHub OAuth — no separate account needed.
+Go to [agentmeter.app](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action) and sign in with GitHub. AgentMeter uses GitHub OAuth — no separate account needed.
 
 ### 2. Get your API key
 
@@ -313,7 +313,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `api_key` | yes | — | Your AgentMeter **org** API key (`am_sk_…`). Create one at [agentmeter.app/dashboard/settings](https://agentmeter.app/dashboard/settings) under API Keys → Create org key. |
+| `api_key` | yes | — | Your AgentMeter **org** API key (`am_sk_…`). Create one at [agentmeter.app/dashboard/settings](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard/settings) under API Keys → Create org key. |
 | `model` | no | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
 | `engine` | no | `claude` | The AI engine (`claude`, `codex`). |
 | `status` | no | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
@@ -330,7 +330,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | `trigger_number` | no | `''` | Issue or PR number to comment on. Override when auto-resolution fails. |
 | `trigger_event` | no | `''` | Original event name (`issues`, `pull_request`, etc.). Used with `trigger_number`. |
 | `post_comment` | no | `true` | Set to `false` to skip posting a cost comment. |
-| `api_url` | no | `https://agentmeter.app` | AgentMeter API base URL. Override for local dev or self-hosted. |
+| `api_url` | no | `https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action` | AgentMeter API base URL. Override for local dev or self-hosted. |
 | `github_token` | no | `${{ github.token }}` | GitHub token for comment posting and artifact access. No config needed. |
 
 ---
@@ -367,7 +367,7 @@ When the action runs in the context of a PR or issue, it posts (or updates) a co
 
 Model: claude-sonnet-4-5 · 14 turns · 75% cache hit rate
 
-[View in AgentMeter →](https://agentmeter.app/dashboard/runs/abc123)
+[View in AgentMeter →](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard/runs/abc123)
 ```
 
 If the action runs again on the same PR/issue, it updates the existing comment (adds a new row) rather than posting a new one. The 5 most recent runs are shown by default; older runs collapse into a "All N runs" toggle.
@@ -392,7 +392,7 @@ Place `if: always()` on the AgentMeter step so it runs even when the agent step 
 
 - Node.js 24 (provided by the GitHub Actions runner — no setup needed)
 - A `GITHUB_TOKEN` (automatically available in every workflow — no extra config needed)
-- An AgentMeter API key from [agentmeter.app](https://agentmeter.app)
+- An AgentMeter API key from [agentmeter.app](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action)
 
 **Data retention:** Free tier keeps run data for 30 days. Pro tier keeps data for 90 days.
 
@@ -426,7 +426,7 @@ For gh-aw integrations using `workflow_run_id`: the action downloads a small JSO
 
 ## AgentMeter dashboard
 
-After runs are ingested, view them at [agentmeter.app/dashboard](https://agentmeter.app/dashboard):
+After runs are ingested, view them at [agentmeter.app/dashboard](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard):
 
 - **Runs feed** — paginated list with cost, status, model, duration, and workflow name per run
 - **Run detail** — token breakdown, related runs grouped by the same PR or issue, dashboard link in PR comments
@@ -446,4 +446,4 @@ See [docs/challenges.md](docs/challenges.md) for known limitations and caveats.
 
 ## License
 
-MIT — [AgentMeter](https://agentmeter.app)
+MIT — [AgentMeter](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action)
