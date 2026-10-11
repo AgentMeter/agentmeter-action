@@ -1,0 +1,32 @@
+name: Move major version tag
+
+# Keeps the floating major tag (e.g. v1) pointing at the latest stable release so
+# `uses: agentmeter/agentmeter-action@v1` picks up every non-breaking update.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  move-major-tag:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move major tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag $TAG is not vX.Y.Z — skipping."
+            exit 0
+          fi
+          MAJOR="v${BASH_REMATCH[1]}"
+          git tag -f "$MAJOR" "$TAG^{}"
+          git push -f origin "refs/tags/$MAJOR"
+          echo "Moved $MAJOR to $TAG ($(git rev-parse "$TAG^{}"))"

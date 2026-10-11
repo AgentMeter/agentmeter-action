@@ -65,7 +65,7 @@ Value: your `am_sk_…` key
 ### 4. Add the action to your workflow
 
 ```yaml
-- uses: agentmeter/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@v1
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -74,6 +74,8 @@ Value: your `am_sk_…` key
 ```
 
 That's it. The action will record the run and post a summary comment on the PR or issue.
+
+`@v1` tracks the latest 1.x release, so you get fixes and non-breaking features automatically. Pin an exact version (`@v1.2.0`) or a commit SHA if you need fully reproducible builds.
 
 ---
 
@@ -96,7 +98,7 @@ steps:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
       prompt: "Implement the feature described in this issue"
 
-  - uses: agentmeter/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -120,7 +122,7 @@ steps:
       prompt: "Review this PR for correctness and style"
       model: gpt-5.4-mini
 
-  - uses: agentmeter/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -152,7 +154,7 @@ This records the run with status and duration. Tokens will show as `—` because
       echo "output_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.output_tokens // empty')" >> "$GITHUB_OUTPUT"
       echo "cache_read_tokens=$(echo "$token_line" | jq -r '.payload.info.total_token_usage.cached_input_tokens // empty')" >> "$GITHUB_OUTPUT"
 
-  - uses: agentmeter/agentmeter-action@main
+  - uses: agentmeter/agentmeter-action@v1
     if: always()
     with:
       api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -169,7 +171,7 @@ This records the run with status and duration. Tokens will show as `—` because
 ### Status tracking only (no token counts)
 
 ```yaml
-- uses: agentmeter/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@v1
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -180,7 +182,7 @@ This records the run with status and duration. Tokens will show as `—` because
 ### Disable comment posting
 
 ```yaml
-- uses: agentmeter/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@v1
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
@@ -229,7 +231,7 @@ jobs:
       issues: write        # required — lets the action post run summary comments
       pull-requests: write
     steps:
-      - uses: agentmeter/agentmeter-action@main
+      - uses: agentmeter/agentmeter-action@v1
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}
           engine: claude
@@ -383,7 +385,7 @@ If the action runs again on the same PR/issue, it updates the existing comment (
 Place `if: always()` on the AgentMeter step so it runs even when the agent step fails. This ensures failed runs are tracked too.
 
 ```yaml
-- uses: agentmeter/agentmeter-action@main
+- uses: agentmeter/agentmeter-action@v1
   if: always()
   with:
     api_key: ${{ secrets.AGENTMETER_API_KEY }}
