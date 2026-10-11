@@ -152,7 +152,7 @@ It uses hardcoded synthetic token counts and a `sleep 10` step so the reported d
 3. Commit everything — the pre-commit hook runs lint-staged (Biome auto-fix), then `npm run lint` as a hard gate, then `npm run type-check`, then `npm run build`, and finally stages `dist/index.js` and `dist/licenses.txt`
 4. Push to `main`
 5. Create a GitHub release with a semver tag: `v1.0.0`
-6. Update the major version tag: `git tag -f v1 && git push -f origin v1`
+6. The `release.yml` workflow moves the major version tag (`v1`) to the new release automatically. Skip it for prereleases or breaking changes — for a new major, publish `v2.0.0` and it creates `v2`
 7. In the GitHub release UI, check "Publish this Action to GitHub Marketplace"
 
 > **Note:** `dist/` must be committed. GitHub Actions checks out the repo at the referenced tag and runs `dist/index.js` directly — it does not run `npm install` or `npm run build`. The pre-commit hook ensures `dist/` is always up-to-date before any commit lands.
