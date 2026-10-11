@@ -53,6 +53,29 @@ describe('submitRun', () => {
     expect(global.fetch).toHaveBeenCalledOnce();
   });
 
+  it('identifies the action version and pinned ref in the User-Agent', async () => {
+    vi.stubEnv('GITHUB_ACTION_REF', 'v1');
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: 'run-ua',
+        dashboardUrl: 'https://agentmeter.app/dashboard/runs/run-ua',
+      }),
+    } as Response);
+
+    await submitRun({
+      apiKey: 'am_sk_test',
+      apiUrl: 'https://agentmeter.app',
+      payload: mockPayload,
+    });
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['User-Agent']).toMatch(
+      /^agentmeter-action\/\d+\.\d+\.\d+ \(ref v1\)$/
+    );
+    vi.unstubAllEnvs();
+  });
+
   it('accepts a response without the deprecated totalCostCents field', async () => {
     const mockResponse = {
       id: 'run-tokens',
