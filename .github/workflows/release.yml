@@ -27,6 +27,10 @@ jobs:
             exit 0
           fi
           MAJOR="v${BASH_REMATCH[1]}"
+          VERSION=$(git show "$TAG^{}:src/version.ts" | sed -nE "s/.*ACTION_VERSION = '([^']+)'.*/\1/p")
+          if [[ "v$VERSION" != "$TAG" ]]; then
+            echo "::warning::src/version.ts is $VERSION but the release tag is $TAG — the API will see the wrong action version."
+          fi
           git tag -f "$MAJOR" "$TAG^{}"
           git push -f origin "refs/tags/$MAJOR"
           echo "Moved $MAJOR to $TAG ($(git rev-parse "$TAG^{}"))"

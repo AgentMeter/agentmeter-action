@@ -147,12 +147,12 @@ It uses hardcoded synthetic token counts and a `sleep 10` step so the reported d
 
 ## Publishing a new version
 
-1. Ensure all tests pass: `npm test`
-2. Run type check: `npm run type-check`
-3. Commit everything — the pre-commit hook runs lint-staged (Biome auto-fix), then `npm run lint` as a hard gate, then `npm run type-check`, then `npm run build`, and finally stages `dist/index.js` and `dist/licenses.txt`
-4. Push to `main`
-5. Create a GitHub release with a semver tag: `v1.0.0`
-6. The `release.yml` workflow moves the major version tag (`v1`) to the new release automatically. Skip it for prereleases or breaking changes — for a new major, publish `v2.0.0` and it creates `v2`
-7. In the GitHub release UI, check "Publish this Action to GitHub Marketplace"
+1. Bump the version in both `package.json` (`npm version <x.y.z> --no-git-tag-version`) and `src/version.ts`. The action reports it to the API in its `User-Agent`; a test fails if the two drift
+2. Ensure all tests pass: `npm test`
+3. Run type check: `npm run type-check`
+4. Commit everything — the pre-commit hook runs lint-staged (Biome auto-fix), then `npm run lint` as a hard gate, then `npm run type-check`, then `npm run build`, and finally stages `dist/index.js` and `dist/licenses.txt`
+5. Push to `main`
+6. Create the release **in the GitHub UI** with tag `vX.Y.Z` (matching `src/version.ts`) and check "Publish this Action to GitHub Marketplace". `gh release create` can't set that checkbox — if you use it, pass `--draft` and publish the draft from the UI
+7. Publishing triggers `release.yml`, which moves the major tag (`v1`) to the new release. It skips prereleases, warns if the tag doesn't match `src/version.ts`, and for a new major (`v2.0.0`) creates `v2`
 
 > **Note:** `dist/` must be committed. GitHub Actions checks out the repo at the referenced tag and runs `dist/index.js` directly — it does not run `npm install` or `npm run build`. The pre-commit hook ensures `dist/` is always up-to-date before any commit lands.

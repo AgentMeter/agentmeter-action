@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import type { IngestPayload, IngestResponse } from './types';
+import { buildUserAgent } from './user-agent';
 
 /**
  * Validates the shape of the ingest API response before trusting its fields.
@@ -51,6 +52,7 @@ export async function submitRun({
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
+        'User-Agent': buildUserAgent({ ref: process.env['GITHUB_ACTION_REF'] }),
       },
       body: JSON.stringify(payload),
     });

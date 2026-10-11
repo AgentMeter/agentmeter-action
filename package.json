@@ -1,6 +1,6 @@
 {
   "name": "agentmeter-action",
-  "version": "0.1.0",
+  "version": "1.2.1",
   "description": "Track token usage, triggers, and outcomes for AI agent runs in GitHub Actions. Works with Claude Code, Copilot, and Codex.",
   "private": false,
   "license": "MIT",
