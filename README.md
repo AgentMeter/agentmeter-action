@@ -1,6 +1,6 @@
 # AgentMeter Action
 
-Visibility into what your AI agents actually cost. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
+Know what your AI agents actually did: tokens, triggers, duration, and outcomes for every run. Works with **Claude Code**, **Codex**, and any agent that outputs token counts.
 
 [![CI](https://github.com/agentmeter/agentmeter-action/actions/workflows/ci.yml/badge.svg)](https://github.com/agentmeter/agentmeter-action/actions/workflows/ci.yml)
 
@@ -8,21 +8,23 @@ Visibility into what your AI agents actually cost. Works with **Claude Code**, *
 
 ## What it does
 
-[GitHub Agentic Workflows](https://github.github.com/gh-aw/) let AI agents implement issues, review PRs, and respond to comments autonomously — but every agent run consumes tokens and costs money. AgentMeter tracks that spend so you're never surprised.
+[GitHub Agentic Workflows](https://github.github.com/gh-aw/) let AI agents implement issues, review PRs, and respond to comments autonomously — but it's hard to see how many tokens each run used, what triggered it, and whether it worked. AgentMeter records all of that per run.
+
+AgentMeter reports tokens, not dollars. Seat plans, subscriptions, and negotiated rates make list-price cost estimates wrong for most teams, so we don't show them.
 
 Add this action after your AI agent step to:
 
 1. Record token usage, model, duration, and status for each agent run
 2. Submit the data to the [AgentMeter](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action) dashboard
-3. Post or update a cost summary comment on the triggering PR or issue
+3. Post or update a run summary comment (tokens, status, duration) on the triggering PR or issue
 
 The action **never fails your workflow** — all API calls and comment posts use `core.warning()` for errors, not `core.setFailed()`.
 
 <p align="center">
   <a href="images/screenshot-agentmeter-github-comment.png">
-    <img src="images/screenshot-agentmeter-github-comment.png" alt="AgentMeter GitHub PR comment showing cost summary" />
+    <img src="images/screenshot-agentmeter-github-comment.png" alt="AgentMeter GitHub PR comment showing run summary" />
   </a>
-  <br/><sub>AgentMeter posts a cost summary directly on the PR.</sub>
+  <br/><sub>AgentMeter posts a run summary directly on the PR.</sub>
 </p>
 
 <p align="center">
@@ -71,7 +73,7 @@ Value: your `am_sk_…` key
     model: claude-sonnet-4-5
 ```
 
-That's it. The action will record the run and post a cost comment on the PR or issue.
+That's it. The action will record the run and post a summary comment on the PR or issue.
 
 ---
 
@@ -127,9 +129,9 @@ steps:
       status: ${{ job.status == 'success' && 'success' || 'failed' }}
 ```
 
-This records the run with status and duration. Cost will show as `—` because `openai/codex-action` doesn't expose token counts as step outputs.
+This records the run with status and duration. Tokens will show as `—` because `openai/codex-action` doesn't expose token counts as step outputs.
 
-**To get per-run cost**, add a token extraction step before AgentMeter. Set `codex-home` so the rollout file path is predictable, then parse it:
+**To get per-run token counts**, add a token extraction step before AgentMeter. Set `codex-home` so the rollout file path is predictable, then parse it:
 
 ```yaml
   - uses: openai/codex-action@v1
@@ -207,7 +209,7 @@ If your agent runs in a **separate workflow** (common with [gh-aw](https://githu
 
 ```yaml
 # .github/workflows/agentmeter.yml
-name: AgentMeter — Track Agent Costs
+name: AgentMeter — Track Agent Runs
 
 on:
   workflow_run:
@@ -224,7 +226,7 @@ jobs:
     permissions:
       actions: read        # required — lets the action gate on the conclusion job
       contents: read
-      issues: write        # required — lets the action post cost comments
+      issues: write        # required — lets the action post run summary comments
       pull-requests: write
     steps:
       - uses: agentmeter/agentmeter-action@main
@@ -314,7 +316,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `api_key` | yes | — | Your AgentMeter **org** API key (`am_sk_…`). Create one at [agentmeter.app/dashboard/settings](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard/settings) under API Keys → Create org key. |
-| `model` | no | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Used for per-token cost display. |
+| `model` | no | `''` | The AI model used (e.g. `claude-sonnet-4-5`). Shown in the comment and dashboard. |
 | `engine` | no | `claude` | The AI engine (`claude`, `codex`). |
 | `status` | no | `success` | Run outcome. In companion `workflow_run` mode this is resolved automatically from the triggering workflow's conclusion. In inline mode pass `${{ steps.agent.outcome }}` or a custom value like `needs_human`. See [docs/status-values.md](docs/status-values.md). |
 | `agent_output` | no | `''` | Raw stdout from the agent step. Used to auto-extract token counts from JSON. |
@@ -329,7 +331,7 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | `completed_at` | no | `''` | ISO 8601 completion timestamp. |
 | `trigger_number` | no | `''` | Issue or PR number to comment on. Override when auto-resolution fails. |
 | `trigger_event` | no | `''` | Original event name (`issues`, `pull_request`, etc.). Used with `trigger_number`. |
-| `post_comment` | no | `true` | Set to `false` to skip posting a cost comment. |
+| `post_comment` | no | `true` | Set to `false` to skip posting the run summary comment. |
 | `api_url` | no | `https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action` | AgentMeter API base URL. Override for local dev or self-hosted. |
 | `github_token` | no | `${{ github.token }}` | GitHub token for comment posting and artifact access. No config needed. |
 
@@ -340,37 +342,39 @@ Replace `$INPUT_TOKENS` etc. with however your agent exposes token counts (step 
 | Output | Description |
 |--------|-------------|
 | `run_id` | The AgentMeter run ID (UUID). |
-| `total_cost_usd` | Total cost in USD as a decimal string (e.g. `"4.52"`). |
+| `total_tokens` | Total tokens used by the run (input + output + cache read + cache write), or empty when unknown. |
+| `total_cost_usd` | **Deprecated.** List-price cost estimate in USD (e.g. `"4.52"`). Kept for existing workflows; will be removed in a future major version. Use `total_tokens`. |
 | `dashboard_url` | Link to the run detail page in the AgentMeter dashboard. |
 
 ---
 
 ## PR/issue comment
 
-When the action runs in the context of a PR or issue, it posts (or updates) a cost summary comment:
+When the action runs in the context of a PR or issue, it posts (or updates) a run summary comment:
 
 ```
 ⚡ AgentMeter
 
-| # | Workflow | Model | Status | Cost | Duration |
-|---|----------|-------|--------|------|----------|
-| 1 | Agent: Code Review | claude-sonnet-4-5 | ✅ | $0.44 | 5m |
+| # | Workflow | Model | Status | Tokens | Duration |
+|---|----------|-------|--------|--------|----------|
+| 1 | Agent: Code Review | claude-sonnet-4-5 | ✅ | 219,922 | 5m |
 
 ▶ Token breakdown
 
-| Type | Tokens | Cost |
-|------|--------|------|
-| Input | 42,318 | $0.13 |
-| Output | 18,204 | $0.27 |
-| Cache writes | 31,000 | $0.12 |
-| Cache reads | 128,400 | $0.04 |
+| Type | Tokens | Share |
+|------|--------|-------|
+| Input | 42,318 | 19% |
+| Output | 18,204 | 8% |
+| Cache writes | 31,000 | 14% |
+| Cache reads | 128,400 | 58% |
+| **Total** | **219,922** | |
 
 Model: claude-sonnet-4-5 · 14 turns · 75% cache hit rate
 
 [View in AgentMeter →](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard/runs/abc123)
 ```
 
-If the action runs again on the same PR/issue, it updates the existing comment (adds a new row) rather than posting a new one. The 5 most recent runs are shown by default; older runs collapse into a "All N runs" toggle.
+If the action runs again on the same PR/issue, it updates the existing comment (adds a new row) rather than posting a new one. The 5 most recent runs are shown by default; older runs collapse into a "All N runs" toggle. Comments written by earlier versions of the action show `—` for runs that only recorded a dollar cost.
 
 ---
 
@@ -428,9 +432,9 @@ For gh-aw integrations using `workflow_run_id`: the action downloads a small JSO
 
 After runs are ingested, view them at [agentmeter.app/dashboard](https://agentmeter.app?utm_source=github&utm_medium=readme&utm_campaign=agentmeter-action/dashboard):
 
-- **Runs feed** — paginated list with cost, status, model, duration, and workflow name per run
+- **Runs feed** — paginated list with tokens, status, model, duration, and workflow name per run
 - **Run detail** — token breakdown, related runs grouped by the same PR or issue, dashboard link in PR comments
-- **Trends** (Pro) — spend over time with breakdowns by workflow, engine, and repo
+- **Trends** (Pro) — token usage over time by token type, with breakdowns by workflow, engine, model, and repo
 - **Team** (Pro + GitHub Org) — invite team members with ADMIN or MEMBER roles; manage access from Settings
 - **Settings** — API key management, connected repos, plan and billing
 

@@ -17,8 +17,8 @@ agentmeter-action/
 │   ├── token-extractor.ts        # Extracts token counts from agent output (JSON then regex)
 │   ├── workflow-run.ts           # workflow_run_id auto-resolution (gate, tokens, trigger, timestamps)
 │   ├── ingest.ts                 # POSTs run data to the AgentMeter API with retry
-│   ├── comment.ts                # Builds and upserts the PR/issue cost comment
-│   ├── pricing.ts                # Fetches model pricing from the API with prefix-match fallback
+│   ├── comment.ts                # Builds and upserts the PR/issue run summary comment
+│   ├── tokens.ts                 # Sums token types into the API's totalTokens
 │   └── types.ts                  # Shared TypeScript types
 ├── dist/
 │   └── index.js                  # Compiled + bundled output (committed to repo)
@@ -27,8 +27,7 @@ agentmeter-action/
 │   ├── context.test.ts
 │   ├── ingest.test.ts
 │   ├── comment.test.ts
-│   ├── workflow-run.test.ts
-│   └── pricing.test.ts
+│   └── workflow-run.test.ts
 ├── .github/workflows/
 │   ├── ci.yml                          # Lint + type-check + test on every push/PR
 │   ├── build.yml                       # Verifies dist/ is not stale on every push/PR
@@ -102,17 +101,13 @@ When set, `resolveWorkflowRun` does four things:
 3. **Trigger resolution** — reads `pull_requests[]` from the run object; falls back to a `pulls.list` lookup by head branch if empty (GitHub API quirk for some PR-triggered runs). When `head_sha` is available, the fallback validates each candidate PR's head SHA against it — if a match is found it is used; if no match is found `triggerNumber` returns `null` rather than guessing. When `head_sha` is absent (API failure), falls back to `prs[0]`. Issue branches are matched only when the branch name contains `agent/issue-N` (the gh-aw convention) to avoid misattributing unrelated branches.
 4. **Token artifact** — downloads and unzips the `agent-tokens` artifact using `fflate`.
 
-### Pricing (`src/pricing.ts`)
-
-`fetchPricing` hits `GET {api_url}/api/models/pricing` (5s timeout). On any failure it returns `{}` and logs an info message. `getPricing` tries an exact (lowercased) match first, then a prefix-based fallback — the longest key in the pricing table that the model ID starts with. This handles versioned or aliased IDs (e.g. `gpt-5.4-mini-20250514` matches `gpt-5.4-mini`). Models without caching support return `null` for `cacheReadPer1M`, which renders as `—` in comments.
-
 ### Comment format (`src/comment.ts`)
 
-Comment table columns: `# | Workflow | Model | Status | Cost | Duration`
+Comment table columns: `# | Workflow | Model | Status | Tokens | Duration`. Tokens are written as exact comma-separated counts so they round-trip when the comment is re-parsed; the total row sums them (prefixed with `≥` when some rows have no known count). The token breakdown shows each type's share of the run total. AgentMeter reports tokens, not dollars — the comment never shows cost.
 
 The upsert logic:
 1. Searches for an existing comment with `<!-- agentmeter -->` marker (paginated search)
-2. Parses existing rows; supports both old 5-column and current 6-column formats for backward compatibility
+2. Parses existing rows; supports both old 5-column and current 6-column formats for backward compatibility. Cells written by pre-token versions hold a dollar cost (`$4.52`); those parse to an unknown token count and render as `—`
 3. Appends the new row, shows the 5 most recent runs by default, and wraps older runs in a collapsible `<details>` block
 4. Runs are ordered newest-first
 5. Updates existing comment or creates a new one
@@ -137,7 +132,7 @@ See `action.yml` for the authoritative list. Key inputs:
 |-------|---------|
 | `api_key` | AgentMeter API key (required) |
 | `workflow_run_id` | Enables Mode B auto-resolution |
-| `model` | AI model name (used for pricing and comment) |
+| `model` | AI model name (shown in the comment and dashboard) |
 | `engine` | `claude` / `codex` |
 | `status` | Run outcome passed to API |
 | `input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_write_tokens` | Explicit token counts (override extraction per-field) |
@@ -158,18 +153,7 @@ Authorization: Bearer {api_key}
 Content-Type: application/json
 ```
 
-Response: `{ id, totalCostCents, dashboardUrl }`
+Response: `{ id, totalTokens, totalCostCents, dashboardUrl }`. Only `id` and `dashboardUrl` are required. `totalCostCents` is deprecated and read only for the deprecated `total_cost_usd` output. Older action versions require it, so the API must keep returning it until those versions are retired.
 
 One retry on network failure (not on 4xx/5xx). 10s timeout per attempt. Deduplication is handled server-side via `githubRunId`.
 
----
-
-## Pricing API
-
-```
-GET {api_url}/api/models/pricing
-```
-
-Response: `{ models: { [modelName]: { inputPerMillionTokens, outputPerMillionTokens, cacheWritePerMillionTokens, cacheReadPerMillionTokens } }, sources: [...] }`
-
-Public, unauthenticated. Cached 1 hour. Used exclusively for comment token cost display. Not required for ingest.

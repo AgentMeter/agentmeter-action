@@ -128,7 +128,7 @@ The last `token_count` event in the file contains cumulative totals for the full
 3. Grep for `"token_count"`, take the last line, extract fields with `jq`
 4. Pass `input_tokens`, `output_tokens`, `cache_read_tokens` as explicit inputs to the AgentMeter step
 
-**Stability caveat:** The rollout format is an internal Codex CLI implementation detail, not a versioned public API. A future `@openai/codex` release could rename fields or restructure events. Failure is graceful — costs show as `—` if the rollout file is missing or unparseable.
+**Stability caveat:** The rollout format is an internal Codex CLI implementation detail, not a versioned public API. A future `@openai/codex` release could rename fields or restructure events. Failure is graceful — tokens show as `—` if the rollout file is missing or unparseable.
 
 **Alternative path (`codex exec --json`):** Running with `--json` writes JSONL to stdout with `turn.completed` events containing a `usage` field. However, `openai/codex-action`'s `final-message` output reads from the output file, not stdout — so the JSONL stream is not accessible from within the action's step outputs. The `tryExtractFromCodexExecJsonl` function in `token-extractor.ts` handles this format for consumers who capture `codex exec --json` stdout directly.
 
@@ -169,4 +169,3 @@ The last `token_count` event in the file contains cumulative totals for the full
 | Comment posting | ✅ | Upsert by marker, paginated search, correct PR/issue number |
 | `GITHUB_TOKEN` availability | ✅ | `github_token` input with `default: ${{ github.token }}` |
 | Node.js version | ✅ | node24 |
-| Pricing | ✅ | Fetched from `/api/models/pricing`; prefix-match fallback for versioned IDs; `null` cache pricing shows `—` |

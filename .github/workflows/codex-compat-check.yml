@@ -94,7 +94,7 @@ jobs:
                 'to the rollout JSONL file has failed. This likely means the `@openai/codex` CLI',
                 'changed its internal session file format.',
                 '',
-                '**Impact:** Codex runs tracked by agentmeter-action will show `—` for cost instead',
+                '**Impact:** Codex runs tracked by agentmeter-action will show `—` for tokens instead',
                 'of a real value until this is fixed.',
                 '',
                 `**Failed run:** ${runUrl}`,

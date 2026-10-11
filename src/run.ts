@@ -4,8 +4,8 @@ import { upsertComment } from './comment';
 import { extractContext } from './context';
 import { submitRun } from './ingest';
 import { parseInputs } from './inputs';
-import { fetchPricing } from './pricing';
 import { extractTurnsFromOutput, resolveTokens } from './token-extractor';
+import { sumTokens } from './tokens';
 import { normalizeConclusion, resolveWorkflowRun } from './workflow-run';
 
 /**
@@ -42,8 +42,6 @@ export async function run(): Promise<void> {
   const ctx = extractContext();
 
   const githubToken = core.getInput('github_token') || process.env['GITHUB_TOKEN'] || '';
-
-  const apiPricing = await fetchPricing({ apiUrl: inputs.apiUrl });
 
   // When workflow_run_id is provided, resolve all workflow-run data automatically:
   // timestamps, trigger number, and agent-tokens artifact. This removes the need
@@ -217,8 +215,12 @@ export async function run(): Promise<void> {
   });
 
   if (result) {
+    const totalTokens = tokens ? sumTokens(tokens) : (result.totalTokens ?? null);
     core.setOutput('run_id', result.id);
-    core.setOutput('total_cost_usd', (result.totalCostCents / 100).toFixed(2));
+    core.setOutput('total_tokens', totalTokens == null ? '' : String(totalTokens));
+    if (result.totalCostCents !== undefined) {
+      core.setOutput('total_cost_usd', (result.totalCostCents / 100).toFixed(2));
+    }
     core.setOutput('dashboard_url', result.dashboardUrl);
 
     if (inputs.postComment && resolvedTriggerNumber !== null) {
@@ -228,7 +230,6 @@ export async function run(): Promise<void> {
       }
       const octokit = github.getOctokit(githubToken);
       await upsertComment({
-        apiPricing,
         issueOrPrNumber: resolvedTriggerNumber,
         octokit,
         owner: ctx.owner,
@@ -236,7 +237,7 @@ export async function run(): Promise<void> {
         runData: {
           workflowName: resolvedWorkflowName,
           status: normalizedStatus,
-          totalCostCents: result.totalCostCents,
+          totalTokens,
           tokens,
           model: inputs.model,
           turns: resolvedTurns,

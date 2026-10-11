@@ -128,7 +128,7 @@ Calculate the following metrics across all lines:
 |--------|---------|----------|
 | **Output ratio** | total_output / total_input | > 0.5 (agent producing more than it reads) |
 | **Cache efficiency** | cache_read / (cache_read + cache_creation) | < 0.2 on runs with > 5000 total tokens |
-| **Total tokens** | sum of all token fields | > 100 000 (high-cost run) |
+| **Total tokens** | sum of all token fields | > 100 000 (heavy run) |
 | **Model count** | distinct model names | > 2 (unexpected model mixing) |
 
 Flagged metrics are anomalies - include them in the diagnosis.
@@ -199,15 +199,15 @@ run is degraded or failed, the most likely cause.
 **If no PR was found**: create an issue using `create_issue` with title:
 `[log-watcher] #${{ github.event.workflow_run.run_number }}: $HEALTH`
 
-### Step 8: High-cost failure callout (optional)
+### Step 8: Heavy failure callout (optional)
 
 If health is ❌ **Failed** AND total tokens exceed 50 000, add the following callout
 **inside** the report you are already posting (comment or issue from Step 7) - do not
 create a separate issue:
 
 ```markdown
-> ⚠️ **High-cost failure** - this run consumed $TOTAL_TOKENS tokens. Review the token
-> breakdown above. Adjust the 50 000-token threshold in the workflow to match your budget.
+> ⚠️ **Heavy failure** - this run consumed $TOTAL_TOKENS tokens. Review the token
+> breakdown above. Adjust the 50 000-token threshold in the workflow to match your team's usage.
 ```
 
 This keeps one report per run as required by the guidelines below.
@@ -226,7 +226,7 @@ This keeps one report per run as required by the guidelines below.
 ## Going Further
 
 Log Watcher works standalone - no external services required. For teams that want
-persistent run history, cross-repo anomaly trends, and budget alerts over time, add
+persistent run history and cross-repo token trends over time, add
 [AgentMeter](https://agentmeter.app) to your agent workflow:
 
 ```yaml
