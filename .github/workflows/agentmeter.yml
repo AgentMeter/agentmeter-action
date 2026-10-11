@@ -1,4 +1,4 @@
-name: AgentMeter — Track Agent Costs
+name: AgentMeter — Track Agent Runs
 
 on:
   workflow_run:
@@ -14,11 +14,11 @@ jobs:
     permissions:
       actions: read      # required to list jobs and download artifacts
       contents: read
-      issues: write      # required to post cost comments
+      issues: write      # required to post run summary comments
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - name: Track agent run cost
+      - name: Track agent run
         uses: ./
         with:
           api_key: ${{ secrets.AGENTMETER_API_KEY }}

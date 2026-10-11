@@ -44,7 +44,7 @@ export interface ActionInputs {
   prNumber: number | null;
   /** AgentMeter API base URL */
   apiUrl: string;
-  /** Whether to post a cost comment on the PR/issue */
+  /** Whether to post a run summary comment on the PR/issue */
   postComment: boolean;
   /** Optional override for trigger number (for workflow_run callers) */
   triggerNumber: number | null;
@@ -118,8 +118,13 @@ export interface IngestPayload {
 export interface IngestResponse {
   /** AgentMeter run UUID */
   id: string;
-  /** Total cost in integer cents */
-  totalCostCents: number;
+  /** Sum of all token types; absent from API versions before the token-only pivot */
+  totalTokens?: number;
+  /**
+   * Estimated cost in integer cents.
+   * @deprecated AgentMeter reports tokens, not dollars. Only read for the deprecated `total_cost_usd` output.
+   */
+  totalCostCents?: number;
   /** Link to the run in the dashboard */
   dashboardUrl: string;
 }
@@ -130,8 +135,8 @@ export interface RunCommentData {
   workflowName: string;
   /** Run status */
   status: string;
-  /** Total cost in cents */
-  totalCostCents: number;
+  /** Sum of all token types, or null when unknown */
+  totalTokens: number | null;
   /** Token counts, if available */
   tokens?: TokenCountsWithMeta;
   /** Model identifier */
@@ -214,8 +219,6 @@ export interface ClaudeCodeOutput {
       cache_creation_input_tokens?: number;
     };
   };
-  /** Some versions include cost_usd directly */
-  cost_usd?: number;
   /** Number of agent turns (emitted by --output-format json) */
   num_turns?: number;
 }

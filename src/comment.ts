@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import type * as github from '@actions/github';
-import { getPricing, type ModelPricing } from './pricing';
+import { sumTokens } from './tokens';
 import type { RunCommentData, TokenCountsWithMeta } from './types';
 
 type Octokit = ReturnType<typeof github.getOctokit>;
@@ -18,22 +18,6 @@ const STATUS_EMOJI: Record<string, string> = {
 };
 
 /**
- * Formats a token cost in USD (e.g. 0.004521 → "$0.0045").
- */
-function formatTokenCost(usd: number): string {
-  if (usd === 0) return '$0.00';
-  if (usd < 0.01) return `$${usd.toFixed(4)}`;
-  return `$${usd.toFixed(2)}`;
-}
-
-/**
- * Formats cents to a USD dollar string (e.g. 452 → "$4.52").
- */
-function formatCost(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-/**
  * Formats a duration in seconds to a human-readable string (e.g. 1102 → "18m").
  */
 function formatDuration(seconds: number | null | undefined): string {
@@ -49,9 +33,27 @@ function formatNumber(n: number): string {
   return n.toLocaleString('en-US');
 }
 
+/**
+ * Formats a token total for a table cell, or — when unknown.
+ */
+function formatTokenCell(tokens: number | null): string {
+  return tokens == null ? '—' : formatNumber(tokens);
+}
+
+/**
+ * Parses a token cell back to a number. Cells from comments written before the
+ * token-only pivot hold a dollar cost (e.g. "$4.52"), which has no token equivalent.
+ */
+function parseTokenCell(cell: string): number | null {
+  if (cell.includes('$')) return null;
+  const digits = cell.replace(/[*,≥\s]/g, '');
+  if (!/^\d+$/.test(digits)) return null;
+  return parseInt(digits, 10);
+}
+
 const TABLE_HEADER = [
-  '| # | Workflow | Model | Status | Cost | Duration |',
-  '|---|----------|-------|--------|------|----------|',
+  '| # | Workflow | Model | Status | Tokens | Duration |',
+  '|---|----------|-------|--------|--------|----------|',
 ];
 
 const VISIBLE_RUNS_LIMIT = 5;
@@ -61,7 +63,7 @@ const MAX_STORED_RUNS = 20;
 /** Minimal run fields needed to render a table row */
 type RunRow = Pick<
   RunCommentData,
-  'durationSeconds' | 'model' | 'status' | 'totalCostCents' | 'workflowName'
+  'durationSeconds' | 'model' | 'status' | 'totalTokens' | 'workflowName'
 >;
 
 /** Builds table row strings for a slice of runs, numbered from startIndex. */
@@ -76,7 +78,7 @@ function buildTableRows({
 }): string[] {
   return runs.map((run, i) => {
     const icon = STATUS_EMOJI[run.status] ?? '❓';
-    return `| ${startIndex + i} | ${run.workflowName} | ${run.model ?? '—'} | ${icon} | ${formatCost(run.totalCostCents)} | ${formatDuration(run.durationSeconds)} |`;
+    return `| ${startIndex + i} | ${run.workflowName} | ${run.model ?? '—'} | ${icon} | ${formatTokenCell(run.totalTokens)} | ${formatDuration(run.durationSeconds)} |`;
   });
 }
 
@@ -87,12 +89,9 @@ function buildTableRows({
  * are shown in the main table; a collapsible section shows all runs.
  */
 export function buildCommentBody({
-  apiPricing,
   existingBody,
   runData,
 }: {
-  /** Pricing fetched from the AgentMeter API */
-  apiPricing: Record<string, ModelPricing>;
   /** Existing comment body to update, if any */
   existingBody: string | null;
   /** New run data to append */
@@ -104,14 +103,12 @@ export function buildCommentBody({
   const allRuns: RunRow[] = [runData, ...existingRuns].slice(0, MAX_STORED_RUNS);
   const isCapped = existingRuns.length + 1 > MAX_STORED_RUNS;
 
-  const totalCostCents = allRuns.reduce((sum, r) => sum + r.totalCostCents, 0);
-  const totalRow =
-    allRuns.length > 1 ? `| **Total** | | | | **${formatCost(totalCostCents)}** | |` : '';
+  const totalRow = allRuns.length > 1 ? buildTotalRow(allRuns) : '';
 
   const visibleRuns = allRuns.slice(0, VISIBLE_RUNS_LIMIT);
   const hasMore = allRuns.length > VISIBLE_RUNS_LIMIT;
 
-  const tokenDetails = buildTokenDetails({ apiPricing, run: runData });
+  const tokenDetails = buildTokenDetails({ run: runData });
 
   const lines: string[] = [
     COMMENT_MARKER,
@@ -148,14 +145,23 @@ export function buildCommentBody({
 }
 
 /**
+ * Builds the bold total row. Prefixed with ≥ when some runs (e.g. rows carried over
+ * from a pre-token comment) have no known token count.
+ */
+function buildTotalRow(runs: RunRow[]): string {
+  const known = runs.filter((r) => r.totalTokens != null);
+  if (known.length === 0) return '| **Total** | | | | **—** | |';
+  const total = known.reduce((sum, r) => sum + (r.totalTokens ?? 0), 0);
+  const prefix = known.length < runs.length ? '≥ ' : '';
+  return `| **Total** | | | | **${prefix}${formatNumber(total)}** | |`;
+}
+
+/**
  * Builds the collapsible token breakdown section for the latest run.
  */
 function buildTokenDetails({
-  apiPricing,
   run,
 }: {
-  /** Pricing fetched from the AgentMeter API */
-  apiPricing: Record<string, ModelPricing>;
   /** Run data */
   run: RunCommentData;
 }): string | null {
@@ -168,17 +174,16 @@ function buildTokenDetails({
   const cacheHitRate =
     totalPromptTokens > 0 ? Math.round((tokens.cacheReadTokens / totalPromptTokens) * 100) : 0;
 
-  const pricing = getPricing({ apiPricing, model });
-  const perM = (count: number, pricePerM: number | null | undefined): string => {
-    if (!pricing || pricePerM == null) return '—';
-    return formatTokenCost((count / 1_000_000) * pricePerM);
-  };
+  const total = sumTokens(tokens);
+  const share = (count: number): string =>
+    total > 0 ? `${Math.round((count / total) * 100)}%` : '—';
 
   const rows = [
-    `| Input | ${formatNumber(tokens.inputTokens)} | ${perM(tokens.inputTokens, pricing?.inputPer1M)} |`,
-    `| Output | ${formatNumber(tokens.outputTokens)} | ${perM(tokens.outputTokens, pricing?.outputPer1M)} |`,
-    `| Cache writes | ${formatNumber(tokens.cacheWriteTokens)} | ${perM(tokens.cacheWriteTokens, pricing?.cacheWritePer1M)} |`,
-    `| Cache reads | ${formatNumber(tokens.cacheReadTokens)} | ${perM(tokens.cacheReadTokens, pricing?.cacheReadPer1M)} |`,
+    `| Input | ${formatNumber(tokens.inputTokens)} | ${share(tokens.inputTokens)} |`,
+    `| Output | ${formatNumber(tokens.outputTokens)} | ${share(tokens.outputTokens)} |`,
+    `| Cache writes | ${formatNumber(tokens.cacheWriteTokens)} | ${share(tokens.cacheWriteTokens)} |`,
+    `| Cache reads | ${formatNumber(tokens.cacheReadTokens)} | ${share(tokens.cacheReadTokens)} |`,
+    `| **Total** | **${formatNumber(total)}** | |`,
   ].join('\n');
 
   const meta = [
@@ -194,8 +199,8 @@ function buildTokenDetails({
     '<details>',
     '<summary>Token breakdown</summary>',
     '',
-    '| Type | Tokens | Cost |',
-    '|------|--------|------|',
+    '| Type | Tokens | Share |',
+    '|------|--------|-------|',
     rows,
     '',
     ...(meta ? [meta] : []),
@@ -219,7 +224,7 @@ function parseDuration(str: string): number | null {
 interface ParsedRun {
   workflowName: string;
   status: string;
-  totalCostCents: number;
+  totalTokens: number | null;
   durationSeconds: number | null;
   dashboardUrl: string;
   tokens?: TokenCountsWithMeta;
@@ -244,13 +249,12 @@ function parseTableRows(rawRows: string): ParsedRun[] {
 
       // Support both old (5-col) and new (6-col) format:
       // Old: # | Workflow | Status | Cost | Duration
-      // New: # | Workflow | Model  | Status | Cost | Duration
+      // New: # | Workflow | Model  | Status | Tokens (or legacy Cost) | Duration
       const hasModelCol = cells.length >= 6;
       const workflowName = cells[1] ?? '';
       const model = hasModelCol && cells[2] && cells[2] !== '—' ? cells[2] : null;
       const statusEmoji = (hasModelCol ? cells[3] : cells[2]) ?? '';
-      const costStr = ((hasModelCol ? cells[4] : cells[3]) ?? '').replace(/[$*]/g, '');
-      const totalCostCents = Math.round(parseFloat(costStr) * 100);
+      const totalTokens = parseTokenCell((hasModelCol ? cells[4] : cells[3]) ?? '');
       const durationSeconds = parseDuration((hasModelCol ? cells[5] : cells[4]) ?? '');
       const status =
         Object.entries(STATUS_EMOJI).find(([, emoji]) => emoji === statusEmoji)?.[0] ?? 'other';
@@ -258,7 +262,7 @@ function parseTableRows(rawRows: string): ParsedRun[] {
       return {
         workflowName,
         status,
-        totalCostCents: Number.isNaN(totalCostCents) ? 0 : totalCostCents,
+        totalTokens,
         durationSeconds,
         dashboardUrl: '',
         model,
@@ -335,19 +339,16 @@ async function findExistingComment({
 }
 
 /**
- * Creates or updates the AgentMeter cost comment on a PR/issue.
+ * Creates or updates the AgentMeter run summary comment on a PR/issue.
  * Never throws — failures are logged as warnings.
  */
 export async function upsertComment({
-  apiPricing,
   issueOrPrNumber,
   octokit,
   owner,
   repo,
   runData,
 }: {
-  /** Pricing fetched from the AgentMeter API */
-  apiPricing: Record<string, ModelPricing>;
   /** Issue or PR number to comment on */
   issueOrPrNumber: number;
   /** GitHub Octokit instance */
@@ -368,7 +369,6 @@ export async function upsertComment({
     });
 
     const body = buildCommentBody({
-      apiPricing,
       existingBody: existing?.body ?? null,
       runData,
     });

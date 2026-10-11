@@ -53,6 +53,42 @@ describe('submitRun', () => {
     expect(global.fetch).toHaveBeenCalledOnce();
   });
 
+  it('accepts a response without the deprecated totalCostCents field', async () => {
+    const mockResponse = {
+      id: 'run-tokens',
+      totalTokens: 219922,
+      dashboardUrl: 'https://agentmeter.app/dashboard/runs/run-tokens',
+    };
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const result = await submitRun({
+      apiKey: 'am_sk_test',
+      apiUrl: 'https://agentmeter.app',
+      payload: mockPayload,
+    });
+
+    expect(result).toEqual(mockResponse);
+  });
+
+  it('rejects a response with a non-numeric totalTokens', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'x', totalTokens: '12', dashboardUrl: '' }),
+    } as Response);
+
+    const result = await submitRun({
+      apiKey: 'am_sk_test',
+      apiUrl: 'https://agentmeter.app',
+      payload: mockPayload,
+    });
+
+    expect(result).toBeNull();
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('unexpected response shape'));
+  });
+
   it('returns null and warns on non-OK response', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,

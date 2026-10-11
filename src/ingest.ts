@@ -9,8 +9,9 @@ function isValidIngestResponse(data: unknown): data is IngestResponse {
   const o = data as Record<string, unknown>;
   return (
     typeof o['id'] === 'string' &&
-    typeof o['totalCostCents'] === 'number' &&
-    typeof o['dashboardUrl'] === 'string'
+    typeof o['dashboardUrl'] === 'string' &&
+    (o['totalTokens'] === undefined || typeof o['totalTokens'] === 'number') &&
+    (o['totalCostCents'] === undefined || typeof o['totalCostCents'] === 'number')
   );
 }
 

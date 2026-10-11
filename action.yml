@@ -1,5 +1,5 @@
 name: 'AgentMeter Action'
-description: 'Track token usage and cost for AI agent runs in GitHub Actions'
+description: 'Track token usage, triggers, and outcomes for AI agent runs in GitHub Actions'
 branding:
   icon: 'zap'
   color: 'green'
@@ -61,7 +61,7 @@ inputs:
     required: false
     default: 'https://agentmeter.app'
   post_comment:
-    description: 'Whether to post a cost comment on the PR/issue. Set to false to disable.'
+    description: 'Whether to post a run summary comment (tokens, status, duration) on the PR/issue. Set to false to disable.'
     required: false
     default: 'true'
   trigger_number:
@@ -88,8 +88,10 @@ inputs:
 outputs:
   run_id:
     description: 'The AgentMeter run ID (UUID)'
+  total_tokens:
+    description: 'Total tokens used by the run (input + output + cache read + cache write), or empty when unknown'
   total_cost_usd:
-    description: 'Total cost in USD as a decimal string (e.g. "4.52")'
+    description: 'Deprecated: AgentMeter reports tokens, not dollars. List-price cost estimate in USD (e.g. "4.52"); will be removed in a future major version'
   dashboard_url:
     description: 'Link to the run detail page in AgentMeter dashboard'
 

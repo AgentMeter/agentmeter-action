@@ -18,10 +18,9 @@ The test suite covers:
 
 - **`token-extractor.test.ts`** — JSON and regex-based token extraction, turns extraction (Claude Code JSON `num_turns`, Codex exec JSONL `turn.completed` count, regex fallback, null cases), priority logic, edge cases
 - **`context.test.ts`** — GitHub event → trigger type mapping, trigger ref extraction for all event types, `issue_comment` PR vs issue distinction
-- **`comment.test.ts`** — Markdown comment formatting, status emojis, cost formatting, multi-run accumulation, newest-first ordering, 5-run visible limit with collapsible history, old/new column format compatibility
+- **`comment.test.ts`** — Markdown comment formatting, status emojis, token totals and shares, multi-run accumulation, newest-first ordering, 5-run visible limit with collapsible history, old/new column format compatibility, legacy dollar-cost rows rendered as `—`
 - **`ingest.test.ts`** — API client success/failure handling, retry logic, Authorization header
 - **`workflow-run.test.ts`** — `workflow_run_id` auto-resolution: gate logic, status normalization, trigger number fallback, zip artifact parsing, partial artifact handling
-- **`pricing.test.ts`** — `fetchPricing` success/failure/timeout/malformed-response handling, `getPricing` exact and prefix matching, case insensitivity, `null` cache pricing
 
 ---
 

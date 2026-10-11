@@ -1,7 +1,7 @@
 {
   "name": "agentmeter-action",
   "version": "0.1.0",
-  "description": "Track token usage and cost for AI agent runs in GitHub Actions. Works with Claude Code, Copilot, and Codex.",
+  "description": "Track token usage, triggers, and outcomes for AI agent runs in GitHub Actions. Works with Claude Code, Copilot, and Codex.",
   "private": false,
   "license": "MIT",
   "author": {
@@ -23,7 +23,7 @@
     "claude",
     "claude-code",
     "token-usage",
-    "cost-tracking",
+    "usage-tracking",
     "agentmeter",
     "anthropic",
     "copilot",
