@@ -113,7 +113,7 @@ steps:
 
 ### Codex — inline
 
-> **Runner note:** `openai/codex-action@v1` currently fails on `ubuntu-latest` (Ubuntu 26.04) with `Could not restrict access to /run/dbus/system_bus_socket` ([openai/codex-action#188](https://github.com/openai/codex-action/issues/188)). Use `runs-on: ubuntu-24.04` for Codex jobs until that's fixed. See [docs/challenges.md](docs/challenges.md#7-codex-action-drop-sudo-fails-on-ubuntu-2604).
+> **Runner note:** `openai/codex-action@v1` currently fails on `ubuntu-latest` (Ubuntu 26.04) with `Could not restrict access to /run/dbus/system_bus_socket` ([openai/codex-action#188](https://github.com/openai/codex-action/issues/188)). Use `runs-on: ubuntu-24.04` for Codex jobs until that's fixed. See [docs/challenges.md](docs/challenges.md#7-ubuntu-2604-breaks-codex-action-and-gh-aw--10).
 
 ```yaml
 steps:
@@ -208,6 +208,8 @@ If your agent runs in a **separate workflow** (common with [gh-aw](https://githu
 5. **`GH_AW_GITHUB_MCP_SERVER_TOKEN`** — set to the same PAT as `GH_AW_GITHUB_TOKEN`. Used by the GitHub MCP server so the agent can read issues and PRs during its run.
 
 > **Note:** `GH_AW_GITHUB_TOKEN` and `GH_AW_GITHUB_MCP_SERVER_TOKEN` are gh-aw secrets, not AgentMeter secrets. Add them at the same location: `github.com/<your-org>/<repo>/settings/secrets/actions`. Requires gh-aw **v0.67.4 or later** — earlier versions had a bug where `push_to_pull_request_branch` silently failed with a git credential error regardless of token setup ([github/gh-aw#25345](https://github.com/github/gh-aw/issues/25345)).
+
+> **Ubuntu 26.04:** gh-aw before v1.0 launches the agent with `sudo -E awf`. On `ubuntu-latest` (Ubuntu 26.04, sudo-rs) `-E` is ignored, so the engine API key never reaches the agent and Claude fails with `Not logged in · Please run /login`. Upgrade gh-aw to v1.0+, or set `runs-on: ubuntu-24.04` and `safe-outputs.threat-detection.runs-on: ubuntu-24.04` in the workflow frontmatter and recompile. See [docs/challenges.md](docs/challenges.md#7-ubuntu-2604-breaks-codex-action-and-gh-aw--10).
 
 ### Companion workflow
 

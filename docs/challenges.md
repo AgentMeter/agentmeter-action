@@ -134,9 +134,13 @@ The last `token_count` event in the file contains cumulative totals for the full
 
 ---
 
-### 7. codex-action drop-sudo fails on Ubuntu 26.04
+### 7. Ubuntu 26.04 breaks codex-action and gh-aw < 1.0
 
-GitHub migrated `ubuntu-latest` to Ubuntu 26.04 starting Oct 19, 2026. On 26.04, `openai/codex-action@v1` fails before Codex runs:
+GitHub migrated `ubuntu-latest` to Ubuntu 26.04 starting Oct 19, 2026. Both agent setups in this repo broke on it.
+
+#### codex-action drop-sudo
+
+On 26.04, `openai/codex-action@v1` fails before Codex runs:
 
 ```
 Error: Could not restrict access to /run/dbus/system_bus_socket.
@@ -148,6 +152,22 @@ The default `safety-strategy: drop-sudo` adds a deny ACL for the runner UID (`se
 **Workaround:** pin Codex jobs to `runs-on: ubuntu-24.04`. Both `agent-review-codex.yml` and `codex-compat-check.yml` do this. Remove the pin once upstream ships a fix.
 
 `safety-strategy: unsafe` also avoids the failure but leaves sudo available to Codex, which can then read the OpenAI key from the Responses API proxy. Avoid it for anything that processes untrusted input (e.g. PR content).
+
+#### gh-aw `sudo -E awf`
+
+gh-aw v0.67.4 compiles the agent and threat-detection jobs to run `sudo -E awf --env-all ...`. Ubuntu 26.04 ships sudo-rs, which ignores `-E`:
+
+```
+sudo: preserving the entire environment is not supported, '-E' is ignored
+[INFO] API proxy enabled: OpenAI=false, Anthropic=false, Copilot=false, Gemini=false
+[WARN] ⚠️  API proxy enabled but no API keys found in environment
+...
+"result":"Not logged in · Please run /login"
+```
+
+`ANTHROPIC_API_KEY` never reaches awf's API proxy sidecar, so Claude Code starts unauthenticated. Rotating the key doesn't help. gh-aw v1.0+ uses `sudo --preserve-env="$(compgen -e | paste -sd, -)"`, which sudo-rs honors.
+
+**Workaround (current):** in `agent-review.md` and `agent-turns-test.md` frontmatter, set `runs-on: ubuntu-24.04` (agent job) and `safe-outputs.threat-detection.runs-on: ubuntu-24.04` (detection job), then `gh aw compile`. The proper fix is upgrading to gh-aw v1.0+, which needs verification that the `workflow_run` artifact format `src/workflow-run.ts` parses is unchanged.
 
 ---
 
