@@ -134,6 +134,23 @@ The last `token_count` event in the file contains cumulative totals for the full
 
 ---
 
+### 7. codex-action drop-sudo fails on Ubuntu 26.04
+
+GitHub migrated `ubuntu-latest` to Ubuntu 26.04 starting Oct 19, 2026. On 26.04, `openai/codex-action@v1` fails before Codex runs:
+
+```
+Error: Could not restrict access to /run/dbus/system_bus_socket.
+    at restrictRootServiceSocket (.../codex-action/v1/dist/main.js)
+```
+
+The default `safety-strategy: drop-sudo` adds a deny ACL for the runner UID (`setfacl -m u:<uid>:---`) on root-owned sockets under `/run`, then verifies the socket is no longer writable via `setpriv ... /usr/bin/test -w`. On 26.04 that check still reports the socket as writable, so the action aborts. Same codex-action SHA works on `ubuntu-24.04`. Tracked upstream in [openai/codex-action#188](https://github.com/openai/codex-action/issues/188).
+
+**Workaround:** pin Codex jobs to `runs-on: ubuntu-24.04`. Both `agent-review-codex.yml` and `codex-compat-check.yml` do this. Remove the pin once upstream ships a fix.
+
+`safety-strategy: unsafe` also avoids the failure but leaves sudo available to Codex, which can then read the OpenAI key from the Responses API proxy. Avoid it for anything that processes untrusted input (e.g. PR content).
+
+---
+
 ## What works regardless of mode
 
 - The action **never fails the workflow** — all errors are `core.warning()`, not `core.setFailed()`.

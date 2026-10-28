@@ -7,7 +7,9 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # codex-action's default drop-sudo strategy fails on ubuntu-26.04 (ubuntu-latest
+    # since Oct 2026): https://github.com/openai/codex-action/issues/188
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write
@@ -64,10 +66,15 @@ jobs:
       - name: Open issue on failure
         if: failure()
         uses: actions/github-script@v7
+        env:
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
-            const title = `⚠️ Codex rollout JSONL compat check failed (${date})`;
+            const codexFailed = process.env.CODEX_OUTCOME === 'failure';
+            const title = codexFailed
+              ? `⚠️ Codex compat check failed: codex-action did not run (${date})`
+              : `⚠️ Codex rollout JSONL compat check failed (${date})`;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const { data: existing } = await github.rest.issues.listForRepo({
@@ -82,12 +89,29 @@ jobs:
               return;
             }
 
+            const codexFailedBody = [
+              '## Codex compatibility check failed before verification',
+              '',
+              'The `openai/codex-action` step itself failed, so the rollout JSONL format was',
+              'never checked. This is usually a runner or action problem (e.g. the safety',
+              'strategy, runner image, or API key), not a Codex session format change.',
+              '',
+              `**Failed run:** ${runUrl}`,
+              '',
+              '## What to check',
+              '',
+              '1. Look at the `Run minimal Codex exec` step logs for the error',
+              '2. Search https://github.com/openai/codex-action/issues for the error message',
+              '3. Compare the runner image and codex-action SHA against the last green run',
+              '4. Apply the same fix to `.github/workflows/agent-review-codex.yml`',
+            ];
+
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title,
               labels: ['codex-compat'],
-              body: [
+              body: (codexFailed ? codexFailedBody : [
                 '## Codex rollout JSONL compatibility check failed',
                 '',
                 'The nightly check that verifies `openai/codex-action` still writes token counts',
@@ -108,5 +132,5 @@ jobs:
                 '   - `tryExtractFromCodexJsonl()` in `src/token-extractor.ts`',
                 '   - `CodexTokenEvent` in `src/types.ts`',
                 '   - `docs/challenges.md` section 6',
-              ].join('\n'),
+              ]).join('\n'),
             });

@@ -113,6 +113,8 @@ steps:
 
 ### Codex — inline
 
+> **Runner note:** `openai/codex-action@v1` currently fails on `ubuntu-latest` (Ubuntu 26.04) with `Could not restrict access to /run/dbus/system_bus_socket` ([openai/codex-action#188](https://github.com/openai/codex-action/issues/188)). Use `runs-on: ubuntu-24.04` for Codex jobs until that's fixed. See [docs/challenges.md](docs/challenges.md#7-codex-action-drop-sudo-fails-on-ubuntu-2604).
+
 ```yaml
 steps:
   - uses: openai/codex-action@v1
