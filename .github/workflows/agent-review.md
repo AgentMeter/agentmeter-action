@@ -4,6 +4,9 @@ description: "AI reviews PRs for code quality, style, and correctness"
 
 engine: claude
 
+# gh-aw <1.0 runs `sudo -E awf`; sudo-rs on ubuntu-26.04 ignores -E and drops ANTHROPIC_API_KEY
+runs-on: ubuntu-24.04
+
 on:
   pull_request:
     types: [opened, synchronize]
@@ -23,6 +26,9 @@ tools:
     toolsets: [repos, pull_requests]
 
 safe-outputs:
+  threat-detection:
+    runs-on: ubuntu-24.04
+
   create-pull-request-review-comment:
     max: 10
 

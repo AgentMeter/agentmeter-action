@@ -4,6 +4,9 @@ description: "Manually-triggered agent run to verify turns tracking end-to-end"
 
 engine: claude
 
+# gh-aw <1.0 runs `sudo -E awf`; sudo-rs on ubuntu-26.04 ignores -E and drops ANTHROPIC_API_KEY
+runs-on: ubuntu-24.04
+
 on:
   workflow_dispatch:
 
@@ -19,6 +22,9 @@ tools:
     toolsets: [repos]
 
 safe-outputs:
+  threat-detection:
+    runs-on: ubuntu-24.04
+
   noop:
     max: 1
 ---
