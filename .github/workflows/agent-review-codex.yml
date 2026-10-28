@@ -12,7 +12,9 @@ concurrency:
 
 jobs:
   review:
-    runs-on: ubuntu-latest
+    # codex-action's default drop-sudo strategy fails on ubuntu-26.04 (ubuntu-latest
+    # since Oct 2026): https://github.com/openai/codex-action/issues/188
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
